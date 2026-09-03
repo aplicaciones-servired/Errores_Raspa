@@ -118,12 +118,20 @@ export const enviarCorreoValidacion = async ({
         <p><img src="cid:imagen-reverso" alt="Imagen del reverso del raspa" width="400" style="display: block; width: 100%; max-width: 400px; height: auto;" /></p>
         <p><strong>Error</strong></p>
         <p><img src="cid:imagen-error" alt="Imagen del error del raspa" width="400" style="display: block; width: 100%; max-width: 400px; height: auto;" /></p>
-        <p>Jhon Cebastian Pontón Carabali</p>
-        <p>Analista de Aplicaciones</p>
-        <p>GRUPO EMPRESARIAL SERVIRED S.A.</p>
-        <p>PBX: (602) 5190869 Ext. 122</p>
-        <p>EMAIL: aplicaciones@gruposervired.com.co</p>
-        <p>El horario de este buzón electrónico es lunes a viernes de 8:00 a.m. a 5:00 p.m. y sábados de 8:00 a.m. a 1:00 p.m. Los correos electrónicos que se remitan por fuera del horario laboral se entenderán entregados el día y hora hábil siguiente a su recepción.</p>
+        <div style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.15; color: #003b78;">
+          <strong>Jhon Cebastian Pontón Carabali</strong><br>
+          Analista de Aplicaciones<br><br>
+          <strong>GRUPO EMPRESARIAL SERVIRED S.A.</strong><br>
+          PBX: (602) 5190869 Ext. 122<br>
+          EMAIL: <a href="mailto:aplicaciones@gruposervired.com.co" style="color: #0563c1;">aplicaciones@gruposervired.com.co</a>
+        </div>
+        <p style="font-family: Arial, sans-serif; font-size: 11px; line-height: 1.15; color: #666666;">
+          El horario de este buzón electrónico es lunes a viernes de 8:00 a.m. a 5:00 p.m. y sábados de 8:00 a.m. a 1:00 p.m. Los correos electrónicos que se remitan por fuera del horario laboral se entenderán entregados el día y hora hábil siguiente a su recepción.
+        </p>
+        <div style="font-family: Arial, sans-serif; font-size: 13px; line-height: 1.15; color: #003b78; text-align: center;">
+          <em>“Antes de imprimir este mensaje, por favor asegúrese que sea realmente necesario”.</em><br>
+          <strong>El Medio Ambiente es nuestro derecho y nuestra responsabilidad.</strong>
+        </div>
       `,
       attachments: [
         { filename: imagenes.frente.filename, content: imagenes.frente.buffer, contentType: imagenes.frente.contentType, cid: 'imagen-frente', contentDisposition: 'inline' },

@@ -63,7 +63,7 @@ export default function RaspaList({ raspas }: Props) {
               <th className="py-2 pr-4">Reverso</th>
               <th className="py-2 pr-4">Error</th>
               <th className="py-2 pr-4">Estado</th>
-              <th className="py-2 pr-4">Request ID</th>
+              <th className="py-2 pr-4">Id raspa y Listo</th>
               <th className="py-2 pr-4">Fecha</th>
             </tr>
           </thead>
