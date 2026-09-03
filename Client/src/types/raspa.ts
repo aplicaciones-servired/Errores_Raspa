@@ -7,6 +7,7 @@ export interface RaspaData {
   imagenReversoUrl: string
   imagenErrorUrl: string
   estado: string
+  requestId?: string | null
   createdAt: string
 }
 

@@ -56,7 +56,6 @@ export default function RaspaList({ raspas }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-500 border-b border-gray-200">
-              <th className="py-2 pr-4">ID</th>
               <th className="py-2 pr-4">Empresa</th>
               <th className="py-2 pr-4">Nombre</th>
               <th className="py-2 pr-4">Tipo</th>
@@ -64,13 +63,13 @@ export default function RaspaList({ raspas }: Props) {
               <th className="py-2 pr-4">Reverso</th>
               <th className="py-2 pr-4">Error</th>
               <th className="py-2 pr-4">Estado</th>
+              <th className="py-2 pr-4">Request ID</th>
               <th className="py-2 pr-4">Fecha</th>
             </tr>
           </thead>
           <tbody>
             {raspas.map((r) => (
               <tr key={r.id} className="border-b border-gray-100 align-middle hover:bg-gray-50">
-                <td className="py-3 pr-4 font-medium text-gray-700">{r.id}</td>
                 <td className="py-3 pr-4 text-gray-700">{r.empresa}</td>
                 <td className="py-3 pr-4 text-gray-700">{r.nombre}</td>
                 <td className="py-3 pr-4 font-semibold text-gray-800">{r.tipoRaspa}</td>
@@ -91,6 +90,13 @@ export default function RaspaList({ raspas }: Props) {
                   >
                     {r.estado}
                   </span>
+                </td>
+                <td className="py-3 pr-4 text-gray-500">
+                  {r.requestId ? (
+                    <span className="font-mono text-gray-700">{r.requestId}</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
                 </td>
                 <td className="py-3 pr-4 text-gray-500">
                   {new Date(r.createdAt).toLocaleDateString()}

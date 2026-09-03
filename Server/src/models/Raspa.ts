@@ -10,6 +10,7 @@ export interface RaspaAttributes {
   imagenReversoUrl: string
   imagenErrorUrl: string
   estado: string
+  requestId?: string | null
   createdAt?: Date
   updatedAt?: Date
 }
@@ -57,6 +58,11 @@ Raspa.init(
       type: DataTypes.STRING(30),
       allowNull: false,
       defaultValue: 'PENDIENTE',
+    },
+    requestId: {
+      type: DataTypes.STRING(60),
+      allowNull: true,
+      field: 'request_id',
     },
     createdAt: {
       type: DataTypes.DATE,
