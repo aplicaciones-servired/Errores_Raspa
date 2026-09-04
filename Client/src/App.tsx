@@ -38,27 +38,38 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-blue-50 p-6">
-      <header className="max-w-5xl mx-auto mb-8 text-center">
-        <h1 className="text-3xl font-bold text-gray-800">
-          🎟️ Validación de Raspas
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Registra y consulta los raspas con sus imagenes: frente, reverso y error
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/60 sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <span className="text-white text-lg">&#127915;</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                Validacion de Raspas
+              </h1>
+              <p className="text-xs text-gray-500">
+                Registra y consulta raspas con imagenes: frente, reverso y error
+              </p>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <div className="max-w-5xl mx-auto mb-6 flex">
-        <div className="mx-auto">
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        <div className="mb-8 flex justify-center">
           <Menu items={menuItems} active={view} onChange={setView} />
         </div>
-      </div>
 
-      {view === 'registrar' ? (
-        <RegistrarRaspaPage onCreated={handleCreated} />
-      ) : (
-        <RaspaListaPage raspas={raspas} onRefresh={loadRaspas} />
-      )}
+        <div className="animate-slide-up">
+          {view === 'registrar' ? (
+            <RegistrarRaspaPage onCreated={handleCreated} />
+          ) : (
+            <RaspaListaPage raspas={raspas} onRefresh={loadRaspas} />
+          )}
+        </div>
+      </main>
     </div>
   )
 }

@@ -130,6 +130,7 @@ router.post('/raspas', async (req: Request, res: Response) => {
           requestId: captura.requestId,
           correoMessageId,
           respuestaSoporte: captura.respuesta,
+          estado: 'RESPONDIDO',
         })
         console.log(`[raspas] request_id ${captura.requestId} guardado en raspa ${raspaId}`)
       } else {
@@ -197,6 +198,7 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
       await raspa.update({
         requestId: resultado.requestId,
         respuestaSoporte: resultado.respuesta,
+        estado: 'RESPONDIDO',
       })
       console.log(`[raspas] Respuesta encontrada para raspa ${raspa.getDataValue('id')}: request_id=${resultado.requestId}`)
       res.json({

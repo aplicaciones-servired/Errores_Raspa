@@ -18,7 +18,7 @@ export default function Menu<T extends MenuItemKey>({
   onChange,
 }: Props<T>) {
   return (
-    <nav className="flex gap-1 bg-white rounded-xl shadow-sm p-1.5 border border-gray-200">
+    <nav className="inline-flex bg-white rounded-xl shadow-sm p-1 border border-gray-200/80">
       {items.map((item) => {
         const isActive = item.key === active
         return (
@@ -26,13 +26,13 @@ export default function Menu<T extends MenuItemKey>({
             key={item.key}
             type="button"
             onClick={() => onChange(item.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer ${
               isActive
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20'
+                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
             }`}
           >
-            {item.icon && <span>{item.icon}</span>}
+            {item.icon && <span className="text-base">{item.icon}</span>}
             {item.label}
           </button>
         )
