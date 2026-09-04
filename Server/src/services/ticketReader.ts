@@ -30,23 +30,67 @@ const extraerRequestId = (texto: string): string | null => {
   return null
 }
 
+const limpiarRespuesta = (cuerpo: string): string => {
+  let texto = cuerpo
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\r?\n/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  const cortesFinales = [
+    /\n*Cordialmente[\s\S]*$/i,
+    /\n*Atentamente[\s\S]*$/i,
+    /\n*Equipo de Soporte[\s\S]*$/i,
+    /\n*Super Loterias[\s\S]*$/i,
+    /\n*El horario de este buzón[\s\S]*$/i,
+    /\n*Antes de imprimir[\s\S]*$/i,
+    /\n*El Medio Ambiente[\s\S]*$/i,
+    /\n*Si necesita reabir[\s\S]*$/i,
+    /\n*Agradecemos su confianza[\s\S]*$/i,
+    /\n*GRUPO EMPRESARIAL[\s\S]*$/i,
+    /\n*PBX:[\s\S]*$/i,
+    /\n*EMAIL: aplicaciones@[\s\S]*$/i,
+  ]
+  for (const corte of cortesFinales) {
+    texto = texto.replace(corte, '')
+  }
+
+  texto = texto
+    .replace(/^[\s\n]+/, '')
+    .replace(/[\s\n]+$/, '')
+    .trim()
+
+  return texto
+}
+
 const leerCuerpo = async (
   client: ImapFlow,
   uid: number,
-): Promise<{ cuerpo: string; asunto: string }> => {
+): Promise<{ cuerpo: string; asunto: string; inReplyTo: string | null }> => {
   const mensaje = await client.fetchOne(uid, { source: true, envelope: true, uid: true })
-  if (!mensaje || !mensaje.source) return { cuerpo: '', asunto: '' }
+  if (!mensaje || !mensaje.source) return { cuerpo: '', asunto: '', inReplyTo: null }
   const asunto = mensaje.envelope?.subject ?? ''
   const parsed = await simpleParser(Buffer.isBuffer(mensaje.source) ? mensaje.source : Buffer.from(mensaje.source))
   return {
     cuerpo: [parsed.text, parsed.html].filter(Boolean).join('\n'),
     asunto,
+    inReplyTo: parsed.inReplyTo ?? null,
   }
 }
 
+export interface CapturaResult {
+  requestId: string
+  respuesta: string
+}
+
 export const capturarRequestId = async (
-  contexto?: { tipoRaspa: string; empresa: string },
-): Promise<string | null> => {
+  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string },
+): Promise<CapturaResult | null> => {
   const client = new ImapFlow({
     host,
     port,
@@ -89,7 +133,17 @@ export const capturarRequestId = async (
     try {
       const orden = [...uids].sort((a, b) => b - a)
       for (const uid of orden) {
-        const { cuerpo, asunto } = await leerCuerpo(client, uid)
+        const { cuerpo, asunto, inReplyTo } = await leerCuerpo(client, uid)
+
+        if (contexto?.correoMessageId && inReplyTo) {
+          const msgIdLimpio = contexto.correoMessageId.trim().toLowerCase()
+          if (inReplyTo.toLowerCase() === msgIdLimpio) {
+            const id = extraerRequestId(`${asunto}\n${cuerpo}`)
+            LOG('match por In-Reply-To', { uid, inReplyTo, id })
+            if (id) return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
+          }
+        }
+
         const id = extraerRequestId(`${asunto}\n${cuerpo}`)
 
         let coincide = true
@@ -110,7 +164,7 @@ export const capturarRequestId = async (
           coincideContexto: coincide,
         })
 
-        if (id && coincide) return id
+        if (id && coincide) return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
       }
     } finally {
       lock.release()

@@ -11,6 +11,8 @@ export interface RaspaAttributes {
   imagenErrorUrl: string
   estado: string
   requestId?: string | null
+  correoMessageId?: string | null
+  respuestaSoporte?: string | null
   createdAt?: Date
   updatedAt?: Date
 }
@@ -63,6 +65,16 @@ Raspa.init(
       type: DataTypes.STRING(60),
       allowNull: true,
       field: 'request_id',
+    },
+    correoMessageId: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      field: 'correo_message_id',
+    },
+    respuestaSoporte: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'respuesta_soporte',
     },
     createdAt: {
       type: DataTypes.DATE,

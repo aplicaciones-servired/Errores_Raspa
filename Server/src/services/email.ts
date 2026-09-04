@@ -75,7 +75,7 @@ export const enviarCorreoValidacion = async ({
   tipoRaspa,
   empresa,
   imagenes,
-}: ValidacionOptions): Promise<void> => {
+}: ValidacionOptions): Promise<string> => {
   const asunto = `Validación estado premio raspe de ${tipoRaspa} gane ${empresa}`
   const tipoRaspaHtml = escaparHtml(tipoRaspa)
   const cuerpo =
@@ -145,6 +145,7 @@ export const enviarCorreoValidacion = async ({
       rejected: info.rejected,
       response: info.response,
     })
+    return info.messageId
   } catch (err) {
     console.error('[email] Error al enviar el correo:', err)
     throw err

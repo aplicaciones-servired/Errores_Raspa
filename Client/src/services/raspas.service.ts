@@ -12,3 +12,19 @@ export const crearRaspa = async (
   const { data } = await http.post<RaspaData>('/raspas', input)
   return data
 }
+
+export interface VerificarRespuestaResponse {
+  respondido: boolean
+  requestId: string | null
+  respuesta: string | null
+  mensaje: string
+}
+
+export const verificarRespuesta = async (
+  id: number,
+): Promise<VerificarRespuestaResponse> => {
+  const { data } = await http.get<VerificarRespuestaResponse>(
+    `/raspas/${id}/verificar-respuesta`,
+  )
+  return data
+}

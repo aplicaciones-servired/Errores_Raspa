@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import Raspa from '../models/Raspa'
 import { uploadImage } from '../services/minioClient'
 import { enviarCorreoValidacion } from '../services/email'
-import { capturarRequestId } from '../services/ticketReader'
+import { capturarRequestId, type CapturaResult } from '../services/ticketReader'
 
 const router = Router()
 
@@ -37,8 +37,8 @@ const TIEMPO_MAXIMO_CAPTURA_MS = 5 * 60 * 1000
 const ESPERA_ENTRE_INTENTOS_MS = 5000
 
 const capturarIdConReintentos = async (
-  contexto?: { tipoRaspa: string; empresa: string },
-): Promise<string | null> => {
+  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string },
+): Promise<CapturaResult | null> => {
   const inicio = Date.now()
   let intento = 0
   let ultimoError: unknown = null
@@ -46,10 +46,10 @@ const capturarIdConReintentos = async (
   while (Date.now() - inicio < TIEMPO_MAXIMO_CAPTURA_MS) {
     intento += 1
     try {
-      const id = await capturarRequestId(contexto)
-      if (id) {
-        console.log(`[raspas] captura exitosa en intento ${intento}`)
-        return id
+      const resultado = await capturarRequestId(contexto)
+      if (resultado) {
+        console.log(`[raspas] captura exitosa en intento ${intento}: request_id=${resultado.requestId}`)
+        return resultado
       }
       console.log(`[raspas] intento ${intento}: aun no hay respuesta, reintentando...`)
     } catch (err) {
@@ -112,7 +112,7 @@ router.post('/raspas', async (req: Request, res: Response) => {
     try {
       const raspaId = raspa.getDataValue('id')
       console.log(`[raspas] Enviando correo de validacion para raspa ${raspaId} (${tipoRaspa} / ${empresa})`)
-      await enviarCorreoValidacion({
+      const correoMessageId = await enviarCorreoValidacion({
         tipoRaspa,
         empresa,
         imagenes: {
@@ -123,14 +123,20 @@ router.post('/raspas', async (req: Request, res: Response) => {
       })
 
       console.log(`[raspas] Capturando request id para raspa ${raspaId}...`)
-      const requestId = await capturarIdConReintentos({ tipoRaspa, empresa })
-      console.log(`[raspas] Resultado captura request id: ${requestId ?? 'no encontrado'}`)
-      if (requestId) {
-        await raspa.update({ requestId })
-        console.log(`[raspas] request_id ${requestId} guardado en raspa ${raspaId}`)
+      const captura = await capturarIdConReintentos({ tipoRaspa, empresa, correoMessageId })
+      console.log(`[raspas] Resultado captura:`, captura ? `request_id=${captura.requestId}` : 'no encontrado')
+      if (captura) {
+        await raspa.update({
+          requestId: captura.requestId,
+          correoMessageId,
+          respuestaSoporte: captura.respuesta,
+        })
+        console.log(`[raspas] request_id ${captura.requestId} guardado en raspa ${raspaId}`)
+      } else {
+        await raspa.update({ correoMessageId })
       }
 
-      res.status(201).json({ ...raspa.toJSON(), requestId })
+      res.status(201).json({ ...raspa.toJSON(), requestId: captura?.requestId ?? null })
     } catch (correoErr) {
       console.error('Error al enviar correo o capturar id para raspa ' + raspa.getDataValue('id') + ':', correoErr)
       res.status(201).json(raspa.toJSON())
@@ -148,6 +154,70 @@ router.get('/raspas', async (_req: Request, res: Response) => {
   } catch (err) {
     console.error('Error al listar raspas:', err)
     res.status(500).json({ error: 'Error interno del servidor' })
+  }
+})
+
+router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response) => {
+  try {
+    const raspa = await Raspa.findByPk(String(req.params.id))
+    if (!raspa) {
+      res.status(404).json({ error: 'Raspa no encontrada' })
+      return
+    }
+
+    if (raspa.getDataValue('requestId') && raspa.getDataValue('respuestaSoporte')) {
+      res.json({
+        respondido: true,
+        requestId: raspa.getDataValue('requestId'),
+        respuesta: raspa.getDataValue('respuestaSoporte'),
+        mensaje: 'Ya tiene respuesta registrada',
+      })
+      return
+    }
+
+    const correoMessageId = raspa.getDataValue('correoMessageId')
+    if (!correoMessageId) {
+      res.json({
+        respondido: false,
+        requestId: null,
+        respuesta: null,
+        mensaje: 'No se envio correo de validacion para esta raspa',
+      })
+      return
+    }
+
+    console.log(`[raspas] Verificando respuesta para raspa ${raspa.getDataValue('id')}...`)
+    const resultado = await capturarRequestId({
+      tipoRaspa: raspa.getDataValue('tipoRaspa'),
+      empresa: raspa.getDataValue('empresa'),
+      correoMessageId,
+    })
+
+    if (resultado) {
+      await raspa.update({
+        requestId: resultado.requestId,
+        respuestaSoporte: resultado.respuesta,
+      })
+      console.log(`[raspas] Respuesta encontrada para raspa ${raspa.getDataValue('id')}: request_id=${resultado.requestId}`)
+      res.json({
+        respondido: true,
+        requestId: resultado.requestId,
+        respuesta: resultado.respuesta,
+        mensaje: 'Respuesta encontrada y guardada',
+      })
+    } else {
+      console.log(`[raspas] Sin respuesta aun para raspa ${raspa.getDataValue('id')}`)
+      res.json({
+        respondido: false,
+        requestId: null,
+        respuesta: null,
+        mensaje: 'Aun no hay respuesta de soporte',
+      })
+    }
+  } catch (err) {
+    console.error('Error al verificar respuesta:', err)
+    res.status(500).json({ error: 'Error interno del servidor' }
+    )
   }
 })
 

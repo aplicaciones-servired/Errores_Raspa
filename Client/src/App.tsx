@@ -57,7 +57,7 @@ function App() {
       {view === 'registrar' ? (
         <RegistrarRaspaPage onCreated={handleCreated} />
       ) : (
-        <RaspaListaPage raspas={raspas} />
+        <RaspaListaPage raspas={raspas} onRefresh={loadRaspas} />
       )}
     </div>
   )

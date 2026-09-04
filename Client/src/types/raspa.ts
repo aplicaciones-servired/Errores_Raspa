@@ -8,6 +8,8 @@ export interface RaspaData {
   imagenErrorUrl: string
   estado: string
   requestId?: string | null
+  correoMessageId?: string | null
+  respuestaSoporte?: string | null
   createdAt: string
 }
 

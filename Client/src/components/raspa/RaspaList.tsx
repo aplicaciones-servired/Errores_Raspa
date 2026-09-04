@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import ImageModal from '../ui/ImageModal'
+import { useToast } from '../ui/ToastContext'
+import { verificarRespuesta } from '../../services/raspas.service'
 import type { RaspaData } from '../../types/raspa'
 
 interface Props {
   raspas: RaspaData[]
+  onRefresh: () => Promise<void>
 }
 
 const estadoClass: Record<string, string> = {
@@ -18,8 +21,10 @@ interface Preview {
   title: string
 }
 
-export default function RaspaList({ raspas }: Props) {
+export default function RaspaList({ raspas, onRefresh }: Props) {
+  const { showToast } = useToast()
   const [preview, setPreview] = useState<Preview | null>(null)
+  const [verificandoId, setVerificandoId] = useState<number | null>(null)
 
   if (raspas.length === 0) {
     return (
@@ -27,6 +32,25 @@ export default function RaspaList({ raspas }: Props) {
         <p className="text-gray-500">Aun no hay raspas registrados</p>
       </div>
     )
+  }
+
+  const handleVerificar = async (id: number) => {
+    setVerificandoId(id)
+    showToast('Verificando respuesta de soporte...', 'info')
+    try {
+      const resultado = await verificarRespuesta(id)
+      if (resultado.respondido) {
+        showToast(`Respuesta encontrada: ${resultado.mensaje}`, 'success')
+        await onRefresh()
+      } else {
+        showToast(resultado.mensaje, 'info')
+      }
+    } catch (err) {
+      console.error('Error al verificar respuesta:', err)
+      showToast('Error al verificar la respuesta', 'error')
+    } finally {
+      setVerificandoId(null)
+    }
   }
 
   const thumbnail = (src: string, alt: string, title: string) => (
@@ -92,8 +116,22 @@ export default function RaspaList({ raspas }: Props) {
                   </span>
                 </td>
                 <td className="py-3 pr-4 text-gray-500">
-                  {r.requestId ? (
-                    <span className="font-mono text-gray-700">{r.requestId}</span>
+                  {r.requestId && r.respuestaSoporte ? (
+                    <div>
+                      <span className="font-mono text-gray-700">{r.requestId}</span>
+                      <p className="text-xs text-green-600 mt-1">Respondido</p>
+                    </div>
+                  ) : r.requestId ? (
+                    <div>
+                      <span className="font-mono text-gray-700">{r.requestId}</span>
+                      <button
+                        onClick={() => handleVerificar(r.id)}
+                        disabled={verificandoId === r.id}
+                        className="block mt-1 text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {verificandoId === r.id ? 'Verificando...' : 'Verificar respuesta'}
+                      </button>
+                    </div>
                   ) : (
                     <span className="text-gray-400">-</span>
                   )}
