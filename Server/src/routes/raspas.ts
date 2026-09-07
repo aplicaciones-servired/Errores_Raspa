@@ -62,6 +62,7 @@ const capturarIdConReintentos = async (
         empresa: contexto?.empresa ?? '',
         correoMessageId: contexto?.correoMessageId,
         requestIdsOcupados,
+        modoHilo: true,
       })
       if (resultado) {
         if (requestIdsOcupados.has(resultado.requestId)) {
@@ -218,9 +219,10 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
       empresa: raspa.getDataValue('empresa'),
       correoMessageId: correoMessageId ?? undefined,
       requestIdBuscado: typeof requestId === 'string' ? requestId : undefined,
+      modoHilo: true,
     })
 
-    if (resultado) {
+    if (resultado && resultado.respuesta.trim().length > 0) {
       await raspa.update({
         requestId: resultado.requestId,
         respuestaSoporte: resultado.respuesta,

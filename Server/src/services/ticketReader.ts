@@ -100,7 +100,7 @@ export interface CapturaContexto {
   correoMessageId?: string
   requestIdsOcupados?: Set<string>
   requestIdBuscado?: string
-  soloRequestId?: boolean
+  modoHilo?: boolean
 }
 
 export const capturarRequestId = async (
@@ -197,7 +197,7 @@ export const capturarRequestId = async (
         let matchTipoEnCuerpo = false
         let matchEmpresaEnAsunto = false
         let matchEmpresaEnCuerpo = false
-        if (contexto && !id) {
+        if (contexto && !id && !contexto.modoHilo) {
           const asuntoMin = asunto.toLowerCase()
           const cuerpoMin = cuerpo.toLowerCase()
           const trazaTipo = contexto.tipoRaspa?.toLowerCase() ?? ''
@@ -225,7 +225,7 @@ export const capturarRequestId = async (
           matchEmpresaEnCuerpo,
         })
 
-        if (id && coincide) {
+        if (id && coincide && !contexto?.modoHilo) {
           if (ocupados?.has(id)) {
             LOG('request_id ya ocupado en fallback, ignorando', { id })
           } else {
