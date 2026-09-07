@@ -1,3 +1,5 @@
+export type RaspaEstado = 'PENDIENTE' | 'RESUELTO' | 'RECHAZADO'
+
 export interface RaspaData {
   id: number
   empresa: string
@@ -6,7 +8,7 @@ export interface RaspaData {
   imagenFrenteUrl: string
   imagenReversoUrl: string
   imagenErrorUrl: string
-  estado: string
+  estado: RaspaEstado
   requestId?: string | null
   correoMessageId?: string | null
   respuestaSoporte?: string | null

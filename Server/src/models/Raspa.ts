@@ -1,5 +1,6 @@
 import { DataTypes, Model } from 'sequelize'
 import sequelize from '../db/connection'
+import { ESTADOS, type RaspaEstado } from '../constants/estados'
 
 export interface RaspaAttributes {
   id?: number
@@ -9,7 +10,7 @@ export interface RaspaAttributes {
   imagenFrenteUrl: string
   imagenReversoUrl: string
   imagenErrorUrl: string
-  estado: string
+  estado: RaspaEstado
   requestId?: string | null
   correoMessageId?: string | null
   respuestaSoporte?: string | null
@@ -59,7 +60,7 @@ Raspa.init(
     estado: {
       type: DataTypes.STRING(30),
       allowNull: false,
-      defaultValue: 'PENDIENTE',
+      defaultValue: ESTADOS.PENDIENTE,
     },
     requestId: {
       type: DataTypes.STRING(60),
