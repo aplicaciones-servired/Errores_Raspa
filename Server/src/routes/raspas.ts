@@ -188,17 +188,21 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
     }
 
     if (raspa.getDataValue('requestId') && raspa.getDataValue('respuestaSoporte')) {
+      if (raspa.getDataValue('estado') !== 'RESUELTO') {
+        await raspa.update({ estado: 'RESUELTO' })
+      }
       res.json({
         respondido: true,
         requestId: raspa.getDataValue('requestId'),
         respuesta: raspa.getDataValue('respuestaSoporte'),
-        mensaje: 'Ya tiene respuesta registrada',
+        mensaje: 'Ya tiene respuesta registrada. Estado actualizado a RESUELTO',
       })
       return
     }
 
     const correoMessageId = raspa.getDataValue('correoMessageId')
-    if (!correoMessageId) {
+    const requestId = raspa.getDataValue('requestId')
+    if (!correoMessageId && !requestId) {
       res.json({
         respondido: false,
         requestId: null,
@@ -209,44 +213,25 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
     }
 
     console.log(`[raspas] Verificando respuesta para raspa ${raspa.getDataValue('id')}...`)
-    const ocupadas = await Raspa.findAll({
-      where: { requestId: { [Op.ne]: null } },
-      attributes: ['requestId'],
-    })
-    const requestIdsOcupados = new Set(
-      ocupadas
-        .map((r) => r.getDataValue('requestId'))
-        .filter((id): id is string => id != null && id !== ''),
-    )
     const resultado = await capturarRequestId({
       tipoRaspa: raspa.getDataValue('tipoRaspa'),
       empresa: raspa.getDataValue('empresa'),
-      correoMessageId,
-      requestIdsOcupados,
+      correoMessageId: correoMessageId ?? undefined,
+      requestIdBuscado: typeof requestId === 'string' ? requestId : undefined,
     })
 
     if (resultado) {
-      if (requestIdsOcupados.has(resultado.requestId)) {
-        console.log(`[raspas] request_id ${resultado.requestId} ya asignado a otra raspa, ignorando`)
-        res.json({
-          respondido: false,
-          requestId: null,
-          respuesta: null,
-          mensaje: 'El request id encontrado ya esta asignado a otra raspa',
-        })
-        return
-      }
       await raspa.update({
         requestId: resultado.requestId,
         respuestaSoporte: resultado.respuesta,
-        estado: 'PENDIENTE',
+        estado: 'RESUELTO',
       })
-      console.log(`[raspas] Respuesta encontrada para raspa ${raspa.getDataValue('id')}: request_id=${resultado.requestId}`)
+      console.log(`[raspas] Respuesta encontrada para raspa ${raspa.getDataValue('id')}: request_id=${resultado.requestId}. Estado -> RESUELTO`)
       res.json({
         respondido: true,
         requestId: resultado.requestId,
         respuesta: resultado.respuesta,
-        mensaje: 'Respuesta encontrada y guardada',
+        mensaje: 'Respuesta encontrada y guardada. Estado actualizado a RESUELTO',
       })
     } else {
       console.log(`[raspas] Sin respuesta aun para raspa ${raspa.getDataValue('id')}`)

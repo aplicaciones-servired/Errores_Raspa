@@ -13,7 +13,7 @@ const user = process.env.IMAP_USER || ''
 const pass = process.env.IMAP_PASS || ''
 
 const REMITENTE = 'soportetecnico@superloterias.co'
-const BUSCAR_ATRAS_HORAS = 24
+const BUSCAR_ATRAS_HORAS = 72
 
 const extraerRequestId = (texto: string): string | null => {
   const cuerpo = texto.replace(/\r?\n/g, ' ')
@@ -94,8 +94,17 @@ export interface CapturaResult {
   respuesta: string
 }
 
+export interface CapturaContexto {
+  tipoRaspa?: string
+  empresa?: string
+  correoMessageId?: string
+  requestIdsOcupados?: Set<string>
+  requestIdBuscado?: string
+  soloRequestId?: boolean
+}
+
 export const capturarRequestId = async (
-  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string; requestIdsOcupados?: Set<string> },
+  contexto?: CapturaContexto,
 ): Promise<CapturaResult | null> => {
   const client = new ImapFlow({
     host,
@@ -112,6 +121,7 @@ export const capturarRequestId = async (
     user,
     passConfigurada: pass.length > 0,
     tamanoPass: pass.length,
+    buscarAtrasHoras: BUSCAR_ATRAS_HORAS,
   })
 
   try {
@@ -131,7 +141,11 @@ export const capturarRequestId = async (
     LOG('buscando correos', { remitente: REMITENTE, desde: desde.toISOString() })
 
     const uids = await client.search({ from: REMITENTE, since: desde })
-    LOG('resultado de busqueda', { cantidad: uids ? uids.length : 0 })
+    LOG('resultado de busqueda', { 
+      cantidad: uids ? uids.length : 0,
+      uids: uids ?? [],
+      queryIMAP: { from: REMITENTE, since: desde.toISOString() }
+    })
     if (!uids || uids.length === 0) return null
 
     const lock = await client.getMailboxLock('INBOX')
@@ -139,34 +153,62 @@ export const capturarRequestId = async (
     try {
       const orden = [...uids].sort((a, b) => b - a)
       const ocupados = contexto?.requestIdsOcupados
+      let matchBuscado: CapturaResult | null = null
       for (const uid of orden) {
         const { cuerpo, asunto, inReplyTo } = await leerCuerpo(client, uid)
+        const id = extraerRequestId(`${asunto}\n${cuerpo}`)
+
+        if (contexto?.requestIdBuscado) {
+          const coincide = id !== null && id === contexto.requestIdBuscado
+          const respuestaLimpia = limpiarRespuesta(cuerpo)
+          LOG('evaluando correo por requestIdBuscado', {
+            uid,
+            asunto,
+            idEncontrado: id,
+            requestIdBuscado: contexto.requestIdBuscado,
+            coincide,
+            largoRespuestaLimpia: respuestaLimpia.length,
+          })
+          if (coincide && id) {
+            if (!matchBuscado || respuestaLimpia.length > matchBuscado.respuesta.length) {
+              matchBuscado = { requestId: id, respuesta: respuestaLimpia }
+            }
+          }
+          continue
+        }
 
         if (contexto?.correoMessageId && inReplyTo) {
           const msgIdLimpio = contexto.correoMessageId.trim().toLowerCase()
           if (inReplyTo.toLowerCase() === msgIdLimpio) {
-            const id = extraerRequestId(`${asunto}\n${cuerpo}`)
-            LOG('match por In-Reply-To', { uid, inReplyTo, id })
-            if (id) {
-              if (ocupados?.has(id)) {
-                LOG('request_id ya ocupado, ignorando', { id })
+            const idInReply = extraerRequestId(`${asunto}\n${cuerpo}`)
+            LOG('match por In-Reply-To', { uid, inReplyTo, id: idInReply })
+            if (idInReply) {
+              if (ocupados?.has(idInReply)) {
+                LOG('request_id ya ocupado, ignorando', { id: idInReply })
               } else {
-                return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
+                return { requestId: idInReply, respuesta: limpiarRespuesta(cuerpo) }
               }
             }
           }
         }
 
-        const id = extraerRequestId(`${asunto}\n${cuerpo}`)
-
         let coincide = true
-        if (contexto) {
+        let matchTipoEnAsunto = false
+        let matchTipoEnCuerpo = false
+        let matchEmpresaEnAsunto = false
+        let matchEmpresaEnCuerpo = false
+        if (contexto && !id) {
           const asuntoMin = asunto.toLowerCase()
-          const trazaTipo = contexto.tipoRaspa.toLowerCase()
-          const trazaEmpresa = contexto.empresa.toLowerCase()
+          const cuerpoMin = cuerpo.toLowerCase()
+          const trazaTipo = contexto.tipoRaspa?.toLowerCase() ?? ''
+          const trazaEmpresa = contexto.empresa?.toLowerCase() ?? ''
+          matchTipoEnAsunto = trazaTipo !== '' && asuntoMin.includes(trazaTipo)
+          matchTipoEnCuerpo = trazaTipo !== '' && cuerpoMin.includes(trazaTipo)
+          matchEmpresaEnAsunto = trazaEmpresa !== '' && asuntoMin.includes(trazaEmpresa)
+          matchEmpresaEnCuerpo = trazaEmpresa !== '' && cuerpoMin.includes(trazaEmpresa)
           coincide =
-            (asuntoMin.includes(trazaTipo) || cuerpo.toLowerCase().includes(trazaTipo)) &&
-            (asuntoMin.includes(trazaEmpresa) || cuerpo.toLowerCase().includes(trazaEmpresa))
+            (matchTipoEnAsunto || matchTipoEnCuerpo) &&
+            (matchEmpresaEnAsunto || matchEmpresaEnCuerpo)
         }
 
         LOG('evaluando correo', {
@@ -175,6 +217,12 @@ export const capturarRequestId = async (
           largoCuerpo: cuerpo.length,
           idEncontrado: id,
           coincideContexto: coincide,
+          contextoTipoRaspa: contexto?.tipoRaspa,
+          contextoEmpresa: contexto?.empresa,
+          matchTipoEnAsunto,
+          matchTipoEnCuerpo,
+          matchEmpresaEnAsunto,
+          matchEmpresaEnCuerpo,
         })
 
         if (id && coincide) {
@@ -184,6 +232,14 @@ export const capturarRequestId = async (
             return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
           }
         }
+      }
+
+      if (matchBuscado) {
+        LOG('mejor coincidencia por requestIdBuscado', {
+          requestId: matchBuscado.requestId,
+          largoRespuesta: matchBuscado.respuesta.length,
+        })
+        return matchBuscado
       }
     } finally {
       lock.release()

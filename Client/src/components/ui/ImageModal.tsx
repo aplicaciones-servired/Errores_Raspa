@@ -18,28 +18,28 @@ export default function ImageModal({ src, alt, title, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 cursor-pointer"
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col"
+        className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <h3 className="font-semibold text-gray-800">{title ?? 'Imagen'}</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-800">{title ?? 'Imagen'}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-lg leading-none cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full p-1.5 transition-all duration-200"
           >
-            ✕
+            &#10005;
           </button>
         </div>
-        <div className="p-4 overflow-auto flex-1 flex items-center justify-center bg-gray-50">
+        <div className="p-5 overflow-auto flex-1 flex items-center justify-center bg-slate-50">
           <img
             src={src}
             alt={alt}
-            className="max-w-full max-h-[70vh] object-contain rounded-lg"
+            className="max-w-full max-h-[75vh] object-contain rounded-xl animate-fade-in"
           />
         </div>
       </div>

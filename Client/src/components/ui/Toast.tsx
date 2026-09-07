@@ -14,10 +14,10 @@ interface ProviderProps {
 const TOAST_MAX = 4
 const TOAST_DURATION = 3500
 
-const toastStyles: Record<ToastType, { icon: string; ring: string; bar: string }> = {
-  success: { icon: '✅', ring: 'border-green-300', bar: 'bg-green-500' },
-  error: { icon: '❌', ring: 'border-red-300', bar: 'bg-red-500' },
-  info: { icon: 'ℹ️', ring: 'border-blue-300', bar: 'bg-blue-500' },
+const toastStyles: Record<ToastType, { icon: string; ring: string; bar: string; border: string }> = {
+  success: { icon: '✅', ring: 'border-emerald-300', bar: 'bg-emerald-500', border: 'border-l-emerald-500' },
+  error: { icon: '❌', ring: 'border-rose-300', bar: 'bg-rose-500', border: 'border-l-rose-500' },
+  info: { icon: 'ℹ️', ring: 'border-blue-300', bar: 'bg-blue-500', border: 'border-l-blue-500' },
 }
 
 export function ToastProvider({ children }: ProviderProps) {
@@ -42,23 +42,23 @@ export function ToastProvider({ children }: ProviderProps) {
     <ToastContext.Provider value={value}>
       {children}
 
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 w-80">
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-3 w-80">
         {toasts.map((toast) => {
           const style = toastStyles[toast.type]
           return (
             <div
               key={toast.id}
-              className={`relative overflow-hidden bg-white rounded-lg shadow-lg border ${style.ring} px-4 py-3 animate-[toast-in_0.2s_ease-out]`}
+              className={`relative overflow-hidden bg-white rounded-xl shadow-2xl border ${style.ring} border-l-4 ${style.border} px-4 py-3.5 animate-toast-in`}
             >
-              <div className="flex items-start gap-2">
-                <span>{style.icon}</span>
-                <span className="text-sm text-gray-800 flex-1">{toast.message}</span>
+              <div className="flex items-start gap-3">
+                <span className="text-base">{style.icon}</span>
+                <span className="text-sm text-slate-700 flex-1 font-medium">{toast.message}</span>
                 <button
                   type="button"
                   onClick={() => removeToast(toast.id)}
-                  className="text-gray-400 hover:text-gray-600 text-sm leading-none cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full p-1 transition-all duration-200"
                 >
-                  ✕
+                  &#10005;
                 </button>
               </div>
               <div className={`absolute bottom-0 left-0 h-1 ${style.bar} toast-bar`} />
