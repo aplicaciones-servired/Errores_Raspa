@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import { Op } from 'sequelize'
 import Raspa from '../models/Raspa'
 import { uploadImage } from '../services/minioClient'
 import { enviarCorreoValidacion } from '../services/email'
@@ -37,7 +38,7 @@ const TIEMPO_MAXIMO_CAPTURA_MS = 5 * 60 * 1000
 const ESPERA_ENTRE_INTENTOS_MS = 5000
 
 const capturarIdConReintentos = async (
-  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string },
+  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string; raspaId?: number },
 ): Promise<CapturaResult | null> => {
   const inicio = Date.now()
   let intento = 0
@@ -46,12 +47,32 @@ const capturarIdConReintentos = async (
   while (Date.now() - inicio < TIEMPO_MAXIMO_CAPTURA_MS) {
     intento += 1
     try {
-      const resultado = await capturarRequestId(contexto)
+      const ocupadas = await Raspa.findAll({
+        where: { requestId: { [Op.ne]: null } },
+        attributes: ['requestId'],
+      })
+      const requestIdsOcupados = new Set(
+        ocupadas
+          .map((r) => r.getDataValue('requestId'))
+          .filter((id): id is string => id != null && id !== ''),
+      )
+
+      const resultado = await capturarRequestId({
+        tipoRaspa: contexto?.tipoRaspa ?? '',
+        empresa: contexto?.empresa ?? '',
+        correoMessageId: contexto?.correoMessageId,
+        requestIdsOcupados,
+      })
       if (resultado) {
-        console.log(`[raspas] captura exitosa en intento ${intento}: request_id=${resultado.requestId}`)
-        return resultado
+        if (requestIdsOcupados.has(resultado.requestId)) {
+          console.log(`[raspas] intento ${intento}: request_id ${resultado.requestId} ya asignado, reintentando...`)
+        } else {
+          console.log(`[raspas] captura exitosa en intento ${intento}: request_id=${resultado.requestId}`)
+          return resultado
+        }
+      } else {
+        console.log(`[raspas] intento ${intento}: aun no hay respuesta, reintentando...`)
       }
-      console.log(`[raspas] intento ${intento}: aun no hay respuesta, reintentando...`)
     } catch (err) {
       ultimoError = err
       console.error(`[raspas] intento ${intento} de captura de request id fallo:`, err)
@@ -130,7 +151,7 @@ router.post('/raspas', async (req: Request, res: Response) => {
           requestId: captura.requestId,
           correoMessageId,
           respuestaSoporte: captura.respuesta,
-          estado: 'RESPONDIDO',
+          estado: 'PENDIENTE',
         })
         console.log(`[raspas] request_id ${captura.requestId} guardado en raspa ${raspaId}`)
       } else {
@@ -188,17 +209,37 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
     }
 
     console.log(`[raspas] Verificando respuesta para raspa ${raspa.getDataValue('id')}...`)
+    const ocupadas = await Raspa.findAll({
+      where: { requestId: { [Op.ne]: null } },
+      attributes: ['requestId'],
+    })
+    const requestIdsOcupados = new Set(
+      ocupadas
+        .map((r) => r.getDataValue('requestId'))
+        .filter((id): id is string => id != null && id !== ''),
+    )
     const resultado = await capturarRequestId({
       tipoRaspa: raspa.getDataValue('tipoRaspa'),
       empresa: raspa.getDataValue('empresa'),
       correoMessageId,
+      requestIdsOcupados,
     })
 
     if (resultado) {
+      if (requestIdsOcupados.has(resultado.requestId)) {
+        console.log(`[raspas] request_id ${resultado.requestId} ya asignado a otra raspa, ignorando`)
+        res.json({
+          respondido: false,
+          requestId: null,
+          respuesta: null,
+          mensaje: 'El request id encontrado ya esta asignado a otra raspa',
+        })
+        return
+      }
       await raspa.update({
         requestId: resultado.requestId,
         respuestaSoporte: resultado.respuesta,
-        estado: 'RESPONDIDO',
+        estado: 'PENDIENTE',
       })
       console.log(`[raspas] Respuesta encontrada para raspa ${raspa.getDataValue('id')}: request_id=${resultado.requestId}`)
       res.json({

@@ -32,11 +32,17 @@ const extraerRequestId = (texto: string): string | null => {
 
 const limpiarRespuesta = (cuerpo: string): string => {
   let texto = cuerpo
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/@media[\s\S]*?\}/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
     .replace(/\r?\n/g, '\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
@@ -77,7 +83,7 @@ const leerCuerpo = async (
   const asunto = mensaje.envelope?.subject ?? ''
   const parsed = await simpleParser(Buffer.isBuffer(mensaje.source) ? mensaje.source : Buffer.from(mensaje.source))
   return {
-    cuerpo: [parsed.text, parsed.html].filter(Boolean).join('\n'),
+    cuerpo: parsed.text || parsed.html || '',
     asunto,
     inReplyTo: parsed.inReplyTo ?? null,
   }
@@ -89,7 +95,7 @@ export interface CapturaResult {
 }
 
 export const capturarRequestId = async (
-  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string },
+  contexto?: { tipoRaspa: string; empresa: string; correoMessageId?: string; requestIdsOcupados?: Set<string> },
 ): Promise<CapturaResult | null> => {
   const client = new ImapFlow({
     host,
@@ -132,6 +138,7 @@ export const capturarRequestId = async (
     LOG('lock de INBOX obtenido')
     try {
       const orden = [...uids].sort((a, b) => b - a)
+      const ocupados = contexto?.requestIdsOcupados
       for (const uid of orden) {
         const { cuerpo, asunto, inReplyTo } = await leerCuerpo(client, uid)
 
@@ -140,7 +147,13 @@ export const capturarRequestId = async (
           if (inReplyTo.toLowerCase() === msgIdLimpio) {
             const id = extraerRequestId(`${asunto}\n${cuerpo}`)
             LOG('match por In-Reply-To', { uid, inReplyTo, id })
-            if (id) return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
+            if (id) {
+              if (ocupados?.has(id)) {
+                LOG('request_id ya ocupado, ignorando', { id })
+              } else {
+                return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
+              }
+            }
           }
         }
 
@@ -164,7 +177,13 @@ export const capturarRequestId = async (
           coincideContexto: coincide,
         })
 
-        if (id && coincide) return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
+        if (id && coincide) {
+          if (ocupados?.has(id)) {
+            LOG('request_id ya ocupado en fallback, ignorando', { id })
+          } else {
+            return { requestId: id, respuesta: limpiarRespuesta(cuerpo) }
+          }
+        }
       }
     } finally {
       lock.release()

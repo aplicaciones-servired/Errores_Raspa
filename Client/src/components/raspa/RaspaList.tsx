@@ -9,15 +9,14 @@ interface Props {
   onRefresh: () => Promise<void>
 }
 
-const ESTADOS = ['PENDIENTE', 'RESPONDIDO', 'VALIDADO', 'RECHAZADO'] as const
+const ESTADOS = ['PENDIENTE', 'RESUELTO', 'RECHAZADO'] as const
 
 const estadoClass: Record<string, string> = {
   PENDIENTE: 'bg-yellow-100 text-yellow-800',
-  RESPONDIDO: 'bg-blue-100 text-blue-800',
-  VALIDADO: 'bg-green-100 text-green-800',
+  RESUELTO: 'bg-green-100 text-green-800',
   RECHAZADO: 'bg-red-100 text-red-800',
 }
-
+  
 interface Preview {
   src: string
   alt: string
