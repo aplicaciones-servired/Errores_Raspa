@@ -1,0 +1,28 @@
+services:
+  web_raspas:
+    image: nginx:stable-alpine3.19-slim
+    container_name: web_raspas
+    volumes:
+      - ./Client/dist:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - raspas-server-1
+    networks:
+      - red-gane-int
+    restart: unless-stopped
+
+  raspas-server-1:
+    build:
+      context: ./Server
+      dockerfile: Dockerfile
+    container_name: raspas-server-1
+    image: raspas-server-1
+    networks:
+      - red-gane-int
+    environment:
+      - TZ=America/Bogota
+    restart: unless-stopped
+
+networks:
+  red-gane-int:
+    external: true
