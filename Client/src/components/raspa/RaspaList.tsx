@@ -31,6 +31,7 @@ export default function RaspaList({ raspas, onRefresh }: Props) {
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroNombre, setFiltroNombre] = useState('')
   const [filtroFecha, setFiltroFecha] = useState('')
+  const [filtroRequestId, setFiltroRequestId] = useState('')
   const [paginaActual, setPaginaActual] = useState(1)
 
   const raspasFiltradas = useMemo(() => {
@@ -41,13 +42,14 @@ export default function RaspaList({ raspas, onRefresh }: Props) {
         const fechaRaspa = new Date(r.createdAt).toISOString().slice(0, 10)
         if (fechaRaspa !== filtroFecha) return false
       }
+      if (filtroRequestId && (!r.requestId || !r.requestId.toLowerCase().includes(filtroRequestId.toLowerCase()))) return false
       return true
     })
-  }, [raspas, filtroEstado, filtroNombre, filtroFecha])
+  }, [raspas, filtroEstado, filtroNombre, filtroFecha, filtroRequestId])
 
   useEffect(() => {
     setPaginaActual(1)
-  }, [filtroEstado, filtroNombre, filtroFecha])
+  }, [filtroEstado, filtroNombre, filtroFecha, filtroRequestId])
 
   const totalPaginas = Math.max(1, Math.ceil(raspasFiltradas.length / ITEMS_POR_PAGINA))
   const paginaSegura = Math.min(paginaActual, totalPaginas)
@@ -153,10 +155,21 @@ export default function RaspaList({ raspas, onRefresh }: Props) {
           />
         </div>
 
-        {(filtroEstado || filtroNombre || filtroFecha) && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ID RASPA Y LISTO</label>
+          <input
+            type="text"
+            value={filtroRequestId}
+            onChange={(e) => setFiltroRequestId(e.target.value)}
+            placeholder="Buscar por EL ID de RASPA Y LISTO..."
+            className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 placeholder:text-slate-400"
+          />
+        </div>
+
+        {(filtroEstado || filtroNombre || filtroFecha || filtroRequestId) && (
           <div className="flex items-end">
             <button
-              onClick={() => { setFiltroEstado(''); setFiltroNombre(''); setFiltroFecha('') }}
+              onClick={() => { setFiltroEstado(''); setFiltroNombre(''); setFiltroFecha(''); setFiltroRequestId('') }}
               className="text-xs text-slate-500 hover:text-rose-500 px-4 py-2.5 rounded-xl hover:bg-rose-50 transition-all duration-200 font-semibold border border-slate-200 hover:border-rose-200"
             >
               Limpiar filtros

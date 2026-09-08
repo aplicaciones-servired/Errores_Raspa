@@ -23,3 +23,37 @@ export interface RaspaCreateInput {
   imagenReverso: string
   imagenError: string
 }
+
+export interface EstadisticaEstado {
+  estado: string
+  cantidad: number
+}
+
+export interface EstadisticaEmpresa {
+  empresa: string
+  cantidad: number
+}
+
+export interface EstadisticaTipo {
+  tipoRaspa: string
+  cantidad: number
+}
+
+export interface EstadisticaDiaria {
+  fecha: string
+  cantidad: number
+}
+
+export interface DashboardStats {
+  total: number
+  pendientes: number
+  resueltos: number
+  sinRespuesta: number
+  conRequestId: number
+  resolucionPct: number
+  porEstado: EstadisticaEstado[]
+  porEmpresa: EstadisticaEmpresa[]
+  porTipo: EstadisticaTipo[]
+  ultimos7Dias: EstadisticaDiaria[]
+  ultimos30Dias: EstadisticaDiaria[]
+}

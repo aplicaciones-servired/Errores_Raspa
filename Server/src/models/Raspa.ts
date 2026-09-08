@@ -89,7 +89,7 @@ Raspa.init(
   {
     sequelize,
     modelName: 'Raspa',
-    tableName: 'imagenes_raspa',
+    tableName: 'IMAGENES_RASPA',
     timestamps: true,
   }
 )

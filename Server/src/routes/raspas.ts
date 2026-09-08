@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import {
   HttpError,
   listarRaspas,
+  obtenerEstadisticas,
   registrarRaspa,
   verificarRespuesta,
 } from '../services/raspas'
@@ -28,6 +29,16 @@ router.get('/raspas', async (_req: Request, res: Response) => {
     res.json(raspas)
   } catch (err) {
     console.error('Error al listar raspas:', err)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+})
+
+router.get('/raspas/estadisticas', async (_req: Request, res: Response) => {
+  try {
+    const estadisticas = await obtenerEstadisticas()
+    res.json(estadisticas)
+  } catch (err) {
+    console.error('Error al obtener estadisticas:', err)
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 })

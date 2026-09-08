@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import Menu from './components/ui/Menu'
 import { useToast } from './components/ui/ToastContext'
+import DashboardPage from './pages/DashboardPage'
 import RegistrarRaspaPage from './pages/RegistrarRaspaPage'
 import RaspaListaPage from './pages/RaspaListaPage'
 import { listarRaspas } from './services/raspas.service'
 import type { RaspaData } from './types/raspa'
 
-type View = 'registrar' | 'listado'
+type View = 'registrar' | 'listado' | 'dashboard'
 
-const menuItems = [
-  { key: 'registrar' as const, label: 'Registrar Raspa', icon: '✏️' },
-  { key: 'listado' as const, label: 'Raspas insertados', icon: '📋' },
+const menuItems: Array<{ key: View; label: string; icon: string }> = [
+  { key: 'registrar', label: 'Registrar Raspa', icon: '✏️' },
+  { key: 'listado', label: 'Raspas insertados', icon: '📋' },
+  { key: 'dashboard', label: 'Dashboard', icon: '📈' },
 ]
 
 function App() {
@@ -65,8 +67,10 @@ function App() {
         <div className="animate-slide-up">
           {view === 'registrar' ? (
             <RegistrarRaspaPage onCreated={handleCreated} />
-          ) : (
+          ) : view === 'listado' ? (
             <RaspaListaPage raspas={raspas} onRefresh={loadRaspas} />
+          ) : (
+            <DashboardPage />
           )}
         </div>
       </main>

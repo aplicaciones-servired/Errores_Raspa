@@ -1,8 +1,13 @@
 import http from './http'
-import type { RaspaCreateInput, RaspaData } from '../types/raspa'
+import type { DashboardStats, RaspaCreateInput, RaspaData } from '../types/raspa'
 
 export const listarRaspas = async (): Promise<RaspaData[]> => {
   const { data } = await http.get<RaspaData[]>('/raspas')
+  return data
+}
+
+export const obtenerEstadisticas = async (): Promise<DashboardStats> => {
+  const { data } = await http.get<DashboardStats>('/raspas/estadisticas')
   return data
 }
 

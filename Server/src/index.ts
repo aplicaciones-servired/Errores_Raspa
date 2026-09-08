@@ -18,7 +18,7 @@ const start = async () => {
     await sequelize.authenticate()
     console.log('MySQL conectado')
 
-    await sequelize.sync({ alter: true })
+    await sequelize.sync()
     console.log('Tablas sincronizadas')
 
     await ensureBucket()

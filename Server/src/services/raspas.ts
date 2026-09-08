@@ -1,4 +1,5 @@
 import { Op } from 'sequelize'
+import sequelize from '../db/connection'
 import Raspa from '../models/Raspa'
 import { uploadImage } from './minioClient'
 import { enviarCorreoValidacion } from './email'
@@ -211,6 +212,140 @@ export const registrarRaspa = async (
 
 export const listarRaspas = async (): Promise<Raspa[]> => {
   return Raspa.findAll({ order: [['createdAt', 'DESC']] })
+}
+
+export interface EstadisticaEstado {
+  estado: string
+  cantidad: number
+}
+
+export interface EstadisticaEmpresa {
+  empresa: string
+  cantidad: number
+}
+
+export interface EstadisticaTipo {
+  tipoRaspa: string
+  cantidad: number
+}
+
+export interface EstadisticaDiaria {
+  fecha: string
+  cantidad: number
+}
+
+export interface EstadisticasRaspa {
+  total: number
+  pendientes: number
+  resueltos: number
+  sinRespuesta: number
+  conRequestId: number
+  resolucionPct: number
+  porEstado: EstadisticaEstado[]
+  porEmpresa: EstadisticaEmpresa[]
+  porTipo: EstadisticaTipo[]
+  ultimos7Dias: EstadisticaDiaria[]
+  ultimos30Dias: EstadisticaDiaria[]
+}
+
+export const obtenerEstadisticas = async (): Promise<EstadisticasRaspa> => {
+  const [total, porEstadoRaw, porEmpresaRaw, porTipoRaw, diariosRaw] = await Promise.all([
+    Raspa.count(),
+    Raspa.findAll({
+      attributes: ['estado', [sequelize.fn('COUNT', sequelize.col('estado')), 'cantidad']],
+      group: ['estado'],
+      raw: true,
+    }),
+    Raspa.findAll({
+      attributes: ['empresa', [sequelize.fn('COUNT', sequelize.col('empresa')), 'cantidad']],
+      group: ['empresa'],
+      order: [[sequelize.literal('cantidad'), 'DESC']],
+      raw: true,
+    }),
+    Raspa.findAll({
+      attributes: [
+        ['tipo_raspa', 'tipoRaspa'],
+        [sequelize.fn('COUNT', sequelize.col('tipo_raspa')), 'cantidad'],
+      ],
+      group: ['tipo_raspa'],
+      order: [[sequelize.literal('cantidad'), 'DESC']],
+      raw: true,
+    }),
+    Raspa.findAll({
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('created_at')), 'fecha'],
+        [sequelize.fn('COUNT', sequelize.col('created_at')), 'cantidad'],
+      ],
+      where: { createdAt: { [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+      group: [sequelize.fn('DATE', sequelize.col('created_at'))],
+      order: [[sequelize.fn('DATE', sequelize.col('created_at')), 'ASC']],
+      raw: true,
+    }),
+  ])
+
+  const porEstado = porEstadoRaw as unknown as Array<{ estado: string; cantidad: number }>
+  const porEmpresa = porEmpresaRaw as unknown as Array<{ empresa: string; cantidad: number }>
+  const porTipo = porTipoRaw as unknown as Array<{ tipoRaspa: string; cantidad: number }>
+  const diarios = diariosRaw as unknown as Array<{ fecha: string; cantidad: number }>
+
+  const estadoMap = new Map<string, number>()
+  for (const fila of porEstado) {
+    estadoMap.set(fila.estado, fila.cantidad)
+  }
+
+  const pendientes = estadoMap.get(ESTADOS.PENDIENTE) ?? 0
+  const resueltos = estadoMap.get(ESTADOS.RESUELTO) ?? 0
+
+  const conRequestId = await Raspa.count({
+    where: { requestId: { [Op.ne]: null } },
+  })
+  const sinRespuesta = await Raspa.count({
+    where: {
+      [Op.or]: [
+        { requestId: null },
+        { respuestaSoporte: null },
+        { respuestaSoporte: '' },
+      ],
+    },
+  })
+
+  const ultimos7Dias = completarFechas(diarios, 7)
+
+  return {
+    total,
+    pendientes,
+    resueltos,
+    sinRespuesta,
+    conRequestId,
+    resolucionPct: total === 0 ? 0 : Math.round((resueltos / total) * 100),
+    porEstado: Array.from(estadoMap, ([estado, cantidad]) => ({ estado, cantidad })),
+    porEmpresa,
+    porTipo,
+    ultimos7Dias,
+    ultimos30Dias: completarFechas(diarios, 30),
+  }
+}
+
+const completarFechas = (
+  filas: Array<{ fecha: string; cantidad: number }>,
+  dias: number,
+): EstadisticaDiaria[] => {
+  const mapa = new Map<string, number>()
+  for (const fila of filas) {
+    if (fila.fecha) mapa.set(fila.fecha.slice(0, 10), fila.cantidad)
+  }
+
+  const resultado: EstadisticaDiaria[] = []
+  for (let i = dias - 1; i >= 0; i--) {
+    const fecha = new Date()
+    fecha.setDate(fecha.getDate() - i)
+    const clave = fecha.toISOString().slice(0, 10)
+    resultado.push({
+      fecha: clave,
+      cantidad: mapa.get(clave) ?? 0,
+    })
+  }
+  return resultado
 }
 
 export interface VerificacionOk {
