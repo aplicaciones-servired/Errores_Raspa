@@ -1,10 +1,10 @@
 import { Op } from 'sequelize'
 import sequelize from '../db/connection'
-import Raspa from '../models/Raspa'
+import Raspa, { type RaspaAttributes } from '../models/Raspa'
 import { uploadImage } from './minioClient'
-import { enviarCorreoValidacion } from './email'
+import { enviarCorreoReporteSemanal, enviarCorreoValidacion } from './email'
 import { capturarRequestId, type CapturaResult } from './ticketReader'
-import { ESTADOS } from '../constants/estados'
+import { ESTADOS, type RaspaEstado } from '../constants/estados'
 
 export class HttpError extends Error {
   readonly status: number
@@ -210,8 +210,181 @@ export const registrarRaspa = async (
   }
 }
 
-export const listarRaspas = async (): Promise<Raspa[]> => {
-  return Raspa.findAll({ order: [['createdAt', 'DESC']] })
+export const listarRaspas = async (filtros: FiltrosListaRaspa = {}): Promise<ListaRaspasResultado> => {
+  const pagina = Math.max(1, Number(filtros.pagina) || 1)
+  const limite = Math.min(100, Math.max(1, Number(filtros.limite) || 6))
+  const where: Record<string, unknown> = {}
+
+  if (filtros.estado) where.estado = filtros.estado
+  if (filtros.nombre) where.nombre = { [Op.like]: `%${filtros.nombre}%` }
+  if (filtros.empresa) where.empresa = filtros.empresa
+  if (filtros.requestId) where.requestId = { [Op.like]: `%${filtros.requestId}%` }
+  if (filtros.desde || filtros.hasta) {
+    const rango: Record<string, Date> = {}
+    if (filtros.desde) rango[Op.gte as unknown as string] = new Date(`${filtros.desde}T00:00:00`)
+    if (filtros.hasta) rango[Op.lte as unknown as string] = new Date(`${filtros.hasta}T23:59:59`)
+    where.createdAt = rango
+  }
+
+  const { rows, count } = await Raspa.findAndCountAll({
+    where,
+    order: [['createdAt', 'DESC']],
+    limit: limite,
+    offset: (pagina - 1) * limite,
+  })
+
+  return {
+    datos: rows,
+    total: count,
+    pagina,
+    totalPaginas: Math.max(1, Math.ceil(count / limite)),
+  }
+}
+
+export interface FiltrosListaRaspa {
+  pagina?: number
+  limite?: number
+  estado?: string
+  nombre?: string
+  empresa?: string
+  requestId?: string
+  desde?: string
+  hasta?: string
+}
+
+export interface ListaRaspasResultado {
+  datos: Raspa[]
+  total: number
+  pagina: number
+  totalPaginas: number
+}
+
+export interface ActualizarRaspaInput {
+  nombre?: string
+  empresa?: string
+  tipoRaspa?: string
+  estado?: RaspaEstado
+  imagenFrente?: string
+  imagenReverso?: string
+  imagenError?: string
+}
+
+const MAPA_CAMPOS_IMAGEN: Array<{
+  campo: 'imagenFrente' | 'imagenReverso' | 'imagenError'
+  attr: 'imagenFrenteUrl' | 'imagenReversoUrl' | 'imagenErrorUrl'
+  carpeta: string
+}> = [
+  { campo: 'imagenFrente', attr: 'imagenFrenteUrl', carpeta: 'frente' },
+  { campo: 'imagenReverso', attr: 'imagenReversoUrl', carpeta: 'reverso' },
+  { campo: 'imagenError', attr: 'imagenErrorUrl', carpeta: 'error' },
+]
+
+export const actualizarRaspa = async (
+  id: string,
+  input: ActualizarRaspaInput,
+): Promise<Raspa> => {
+  const raspa = await Raspa.findByPk(id)
+  if (!raspa) {
+    throw new HttpError(404, 'Raspa no encontrada')
+  }
+
+  const cambios: Partial<RaspaAttributes> = {}
+  if (input.nombre !== undefined) cambios.nombre = input.nombre.trim()
+  if (input.empresa !== undefined) cambios.empresa = input.empresa.trim()
+  if (input.tipoRaspa !== undefined) cambios.tipoRaspa = input.tipoRaspa.trim()
+  if (input.estado !== undefined) {
+    if (!Object.values(ESTADOS).includes(input.estado)) {
+      throw new HttpError(400, 'Estado invalido')
+    }
+    cambios.estado = input.estado
+  }
+
+  for (const { campo, attr, carpeta } of MAPA_CAMPOS_IMAGEN) {
+    const valor = input[campo]
+    if (typeof valor === 'string' && valor.length > 0) {
+      const parsed = parseDataUrl(valor)
+      if (!parsed) {
+        throw new HttpError(400, 'Formato de imagen invalido')
+      }
+      const subida = await uploadImage(
+        parsed.buffer,
+        `image${toExtension(parsed.mime)}`,
+        carpeta,
+        parsed.mime,
+      )
+      cambios[attr] = subida.url
+    }
+  }
+
+  await raspa.update(cambios)
+  return raspa
+}
+
+export interface ReporteSemanal {
+  periodo: string
+  totalSemana: number
+  resueltos: number
+  pendientes: number
+  rechazados: number
+  porEmpresa: EstadisticaEmpresa[]
+  porTipo: EstadisticaTipo[]
+}
+
+export const generarReporteSemanal = async (): Promise<ReporteSemanal> => {
+  const hace7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+
+  const [totalSemana, porEstado, porEmpresaRa, porTipoRa] = await Promise.all([
+    Raspa.count({ where: { createdAt: { [Op.gte]: hace7 } } }),
+    Raspa.findAll({
+      where: { createdAt: { [Op.gte]: hace7 } },
+      attributes: ['estado', [sequelize.fn('COUNT', sequelize.col('estado')), 'cantidad']],
+      group: ['estado'],
+      raw: true,
+    }),
+    Raspa.findAll({
+      where: { createdAt: { [Op.gte]: hace7 } },
+      attributes: ['empresa', [sequelize.fn('COUNT', sequelize.col('empresa')), 'cantidad']],
+      group: ['empresa'],
+      order: [[sequelize.literal('cantidad'), 'DESC']],
+      raw: true,
+    }),
+    Raspa.findAll({
+      where: { createdAt: { [Op.gte]: hace7 } },
+      attributes: [
+        ['tipo_raspa', 'tipoRaspa'],
+        [sequelize.fn('COUNT', sequelize.col('tipo_raspa')), 'cantidad'],
+      ],
+      group: ['tipo_raspa'],
+      order: [[sequelize.literal('cantidad'), 'DESC']],
+      raw: true,
+    }),
+  ])
+
+  const estadoMap = new Map<string, number>()
+  for (const fila of porEstado as unknown as Array<{ estado: string; cantidad: number }>) {
+    estadoMap.set(fila.estado, fila.cantidad)
+  }
+
+  const hoy = new Date()
+  const hace7F = new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const formato = (d: Date) =>
+    d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
+
+  return {
+    periodo: `${formato(hace7F)} - ${formato(hoy)}`,
+    totalSemana,
+    resueltos: estadoMap.get(ESTADOS.RESUELTO) ?? 0,
+    pendientes: estadoMap.get(ESTADOS.PENDIENTE) ?? 0,
+    rechazados: estadoMap.get(ESTADOS.RECHAZADO) ?? 0,
+    porEmpresa: porEmpresaRa as unknown as EstadisticaEmpresa[],
+    porTipo: porTipoRa as unknown as EstadisticaTipo[],
+  }
+}
+
+export const enviarReporteSemanal = async (): Promise<{ enviado: true; messageId: string }> => {
+  const reporte = await generarReporteSemanal()
+  const messageId = await enviarCorreoReporteSemanal(reporte)
+  return { enviado: true, messageId }
 }
 
 export interface EstadisticaEstado {
@@ -234,13 +407,29 @@ export interface EstadisticaDiaria {
   cantidad: number
 }
 
+export interface EstadisticaEmbudo {
+  grupo: string
+  cantidad: number
+}
+
+export interface FiltrosEstadisticas {
+  empresa?: string
+  desde?: string
+  hasta?: string
+}
+
 export interface EstadisticasRaspa {
   total: number
   pendientes: number
   resueltos: number
+  rechazados: number
   sinRespuesta: number
   conRequestId: number
   resolucionPct: number
+  tiempoPromedioResolucionHs: number
+  pendientes24h: number
+  pendientes48h: number
+  embudo: EstadisticaEmbudo[]
   porEstado: EstadisticaEstado[]
   porEmpresa: EstadisticaEmpresa[]
   porTipo: EstadisticaTipo[]
@@ -248,21 +437,65 @@ export interface EstadisticasRaspa {
   ultimos30Dias: EstadisticaDiaria[]
 }
 
-export const obtenerEstadisticas = async (): Promise<EstadisticasRaspa> => {
+const rangoFechas = (desde?: string, hasta?: string): Record<string, Date> | null => {
+  if (!desde && !hasta) return null
+  const rango: Record<string, Date> = {}
+  if (desde) rango[Op.gte as unknown as string] = new Date(`${desde}T00:00:00`)
+  if (hasta) rango[Op.lte as unknown as string] = new Date(`${hasta}T23:59:59`)
+  return rango
+}
+
+const calcularVentanaSerie = (
+  desde?: string,
+  hasta?: string,
+): { inicio: Date; fin: Date; dias: number } => {
+  const hoy = new Date()
+  const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000)
+  let inicio = hace30
+  let fin = hoy
+  if (desde) {
+    const d0 = new Date(`${desde}T00:00:00`)
+    if (d0.getTime() > inicio.getTime()) inicio = d0
+  }
+  if (hasta) {
+    const d1 = new Date(`${hasta}T23:59:59`)
+    if (d1.getTime() < fin.getTime()) fin = d1
+  }
+  if (fin.getTime() < inicio.getTime()) fin = inicio
+  const dias = Math.min(92, Math.max(1, Math.round((fin.getTime() - inicio.getTime()) / 86400000) + 1))
+  return { inicio, fin, dias }
+}
+
+export const obtenerEstadisticas = async (
+  filtros: FiltrosEstadisticas = {},
+): Promise<EstadisticasRaspa> => {
+  const { inicio: inicioSerie, fin: finSerie, dias: diasSerie } = calcularVentanaSerie(
+    filtros.desde,
+    filtros.hasta,
+  )
+
+  const whereFiltros: Record<string, unknown> = {}
+  if (filtros.empresa) whereFiltros.empresa = filtros.empresa
+  const rango = rangoFechas(filtros.desde, filtros.hasta)
+  if (rango) whereFiltros.createdAt = rango
+
   const [total, porEstadoRaw, porEmpresaRaw, porTipoRaw, diariosRaw] = await Promise.all([
-    Raspa.count(),
+    Raspa.count({ where: whereFiltros }),
     Raspa.findAll({
+      where: whereFiltros,
       attributes: ['estado', [sequelize.fn('COUNT', sequelize.col('estado')), 'cantidad']],
       group: ['estado'],
       raw: true,
     }),
     Raspa.findAll({
+      where: whereFiltros,
       attributes: ['empresa', [sequelize.fn('COUNT', sequelize.col('empresa')), 'cantidad']],
       group: ['empresa'],
       order: [[sequelize.literal('cantidad'), 'DESC']],
       raw: true,
     }),
     Raspa.findAll({
+      where: whereFiltros,
       attributes: [
         ['tipo_raspa', 'tipoRaspa'],
         [sequelize.fn('COUNT', sequelize.col('tipo_raspa')), 'cantidad'],
@@ -272,11 +505,14 @@ export const obtenerEstadisticas = async (): Promise<EstadisticasRaspa> => {
       raw: true,
     }),
     Raspa.findAll({
+      where: {
+        ...(filtros.empresa ? { empresa: filtros.empresa } : {}),
+        createdAt: { [Op.gte]: inicioSerie, [Op.lte]: finSerie },
+      },
       attributes: [
         [sequelize.fn('DATE', sequelize.col('created_at')), 'fecha'],
         [sequelize.fn('COUNT', sequelize.col('created_at')), 'cantidad'],
       ],
-      where: { createdAt: { [Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
       group: [sequelize.fn('DATE', sequelize.col('created_at'))],
       order: [[sequelize.fn('DATE', sequelize.col('created_at')), 'ASC']],
       raw: true,
@@ -295,34 +531,87 @@ export const obtenerEstadisticas = async (): Promise<EstadisticasRaspa> => {
 
   const pendientes = estadoMap.get(ESTADOS.PENDIENTE) ?? 0
   const resueltos = estadoMap.get(ESTADOS.RESUELTO) ?? 0
+  const rechazados = estadoMap.get(ESTADOS.RECHAZADO) ?? 0
 
-  const conRequestId = await Raspa.count({
-    where: { requestId: { [Op.ne]: null } },
-  })
-  const sinRespuesta = await Raspa.count({
-    where: {
-      [Op.or]: [
-        { requestId: null },
-        { respuestaSoporte: null },
-        { respuestaSoporte: '' },
-      ],
-    },
-  })
+  const [conRequestId, sinRespuesta, pendientes24h, pendientes48h, pendientesConId, resueltosRows] =
+    await Promise.all([
+      Raspa.count({
+        where: { ...whereFiltros, requestId: { [Op.ne]: null } },
+      }),
+      Raspa.count({
+        where: {
+          ...whereFiltros,
+          [Op.or]: [
+            { requestId: null },
+            { respuestaSoporte: null },
+            { respuestaSoporte: '' },
+          ],
+        },
+      }),
+      Raspa.count({
+        where: {
+          ...whereFiltros,
+          estado: ESTADOS.PENDIENTE,
+          createdAt: { [Op.lte]: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+      }),
+      Raspa.count({
+        where: {
+          ...whereFiltros,
+          estado: ESTADOS.PENDIENTE,
+          createdAt: { [Op.lte]: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+        },
+      }),
+      Raspa.count({
+        where: {
+          ...whereFiltros,
+          estado: ESTADOS.PENDIENTE,
+          requestId: { [Op.ne]: null },
+        },
+      }),
+      Raspa.findAll({
+        where: { ...whereFiltros, estado: ESTADOS.RESUELTO },
+        attributes: ['createdAt', 'updatedAt'],
+      }),
+    ])
 
-  const ultimos7Dias = completarFechas(diarios, 7)
+  const horasResueltos = resueltosRows.reduce((acc, r) => {
+    const creada = new Date(r.getDataValue('createdAt') as Date).getTime()
+    const actualizada = new Date(r.getDataValue('updatedAt') as Date).getTime()
+    return acc + Math.max(0, (actualizada - creada) / 3600000)
+  }, 0)
+  const tiempoPromedioResolucionHs =
+    resueltosRows.length === 0
+      ? 0
+      : Math.round((horasResueltos / resueltosRows.length) * 10) / 10
+
+  const embudo: EstadisticaEmbudo[] = [
+    { grupo: 'SIN_REQUEST_ID', cantidad: pendientes - pendientesConId },
+    { grupo: 'CON_REQUEST_ID', cantidad: pendientesConId },
+    { grupo: ESTADOS.RESUELTO, cantidad: resueltos },
+    { grupo: ESTADOS.RECHAZADO, cantidad: rechazados },
+  ].filter((e) => e.cantidad > 0)
+
+  const serieCompleta = completarFechas(diarios, diasSerie)
+  const ultimos7Dias = serieCompleta.slice(-7)
 
   return {
     total,
     pendientes,
     resueltos,
+    rechazados,
     sinRespuesta,
     conRequestId,
     resolucionPct: total === 0 ? 0 : Math.round((resueltos / total) * 100),
+    tiempoPromedioResolucionHs,
+    pendientes24h,
+    pendientes48h,
+    embudo,
     porEstado: Array.from(estadoMap, ([estado, cantidad]) => ({ estado, cantidad })),
     porEmpresa,
     porTipo,
     ultimos7Dias,
-    ultimos30Dias: completarFechas(diarios, 30),
+    ultimos30Dias: serieCompleta,
   }
 }
 

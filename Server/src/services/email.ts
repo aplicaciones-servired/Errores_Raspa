@@ -36,6 +36,8 @@ const toList = [
   process.env.MAIL_TO_SOPORTE,
 ].filter(Boolean) as string[]
 
+const reporteTo = process.env.MAIL_TO_REPORTE || 'aplicaciones@gruposervired.com.co'
+
 let transporter: Transporter | null = null
 
 const getTransporter = (): Transporter => {
@@ -69,6 +71,59 @@ const verificarTransporter = async (t: Transporter): Promise<void> => {
     console.error('[email] Fallo SMTP verify:', err)
     throw err
   }
+}
+
+export interface DatosReporte {
+  periodo: string
+  totalSemana: number
+  resueltos: number
+  pendientes: number
+  rechazados: number
+  porEmpresa: Array<{ empresa: string; cantidad: number }>
+  porTipo: Array<{ tipoRaspa: string; cantidad: number }>
+}
+
+export const enviarCorreoReporteSemanal = async (datos: DatosReporte): Promise<string> => {
+  LOG('preparando reporte semanal', datos)
+
+  const filas = (filasOrigen: Array<{ label: string; cantidad: number }>) =>
+    filasOrigen
+      .map((f) => {
+        const nombre = escaparHtml(f.label)
+        return `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0;">${nombre}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;">${f.cantidad}</td></tr>`
+      })
+      .join('')
+
+  const tablaEmpresa = filas(datos.porEmpresa.map((f) => ({ label: f.empresa, cantidad: f.cantidad })))
+  const tablaTipo = filas(datos.porTipo.map((f) => ({ label: f.tipoRaspa, cantidad: f.cantidad })))
+
+  const tabla = `
+    <h2 style="color:#1e3a8a;">Reporte semanal de raspas</h2>
+    <p style="font-size:14px;color:#475569;"><strong>Periodo:</strong> ${escaparHtml(datos.periodo)}</p>
+    <table style="border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+      <tr style="background:#eef2ff;"><td style="padding:6px 12px;border:1px solid #e2e8f0;">Total en semana</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;"><strong>${datos.totalSemana}</strong></td></tr>
+      <tr><td style="padding:6px 12px;border:1px solid #e2e8f0;">Resueltos</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;">${datos.resueltos}</td></tr>
+      <tr><td style="padding:6px 12px;border:1px solid #e2e8f0;">Pendientes</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;">${datos.pendientes}</td></tr>
+      <tr><td style="padding:6px 12px;border:1px solid #e2e8f0;">Rechazados</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;">${datos.rechazados}</td></tr>
+    </table>
+    <h3 style="color:#334155;">Por empresa</h3>
+    <table style="border-collapse:collapse;font-size:14px;margin-bottom:16px;">${tablaEmpresa ||
+      `<tr><td colspan="2" style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;">Sin registros en el periodo</td></tr>`}</table>
+    <h3 style="color:#334155;">Por tipo de raspa</h3>
+    <table style="border-collapse:collapse;font-size:14px;">${tablaTipo ||
+      `<tr><td colspan="2" style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;">Sin registros en el periodo</td></tr>`}</table>
+  `
+
+  await verificarTransporter(getTransporter())
+
+  const info = await getTransporter().sendMail({
+    from: `Aplicaciones <${from}>`,
+    to: reporteTo,
+    subject: `Reporte semanal de raspas (${datos.periodo})`,
+    html: tabla,
+  })
+  LOG('reporte semanal enviado', { messageId: info.messageId, accepted: info.accepted, to: reporteTo })
+  return info.messageId
 }
 
 export const enviarCorreoValidacion = async ({
