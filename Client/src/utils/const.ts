@@ -1,5 +1,7 @@
 export const API_URL = import.meta.env.VITE_DATA_URL
 
+export const API_LOGIN = import.meta.env.VITE_DATA_LOGIN
+
 export const EMPRESAS = ['Servired', 'Multired'] as const
 
 export type Empresa = (typeof EMPRESAS)[number]
