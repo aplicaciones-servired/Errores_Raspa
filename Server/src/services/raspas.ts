@@ -264,10 +264,15 @@ export interface ActualizarRaspaInput {
   empresa?: string
   tipoRaspa?: string
   estado?: RaspaEstado
+  requestId?: string
+  usuarioId?: number | string
+  usuarioUsername?: string
   imagenFrente?: string
   imagenReverso?: string
   imagenError?: string
 }
+
+const USUARIOS_AUTORIZADOS_REQUEST_ID = new Set(['1001060235'])
 
 const MAPA_CAMPOS_IMAGEN: Array<{
   campo: 'imagenFrente' | 'imagenReverso' | 'imagenError'
@@ -297,6 +302,18 @@ export const actualizarRaspa = async (
       throw new HttpError(400, 'Estado invalido')
     }
     cambios.estado = input.estado
+  }
+
+  if (input.requestId !== undefined) {
+    const usuarioId = input.usuarioId !== undefined ? String(input.usuarioId) : ''
+    const usuarioUsername = input.usuarioUsername ?? ''
+    if (
+      !USUARIOS_AUTORIZADOS_REQUEST_ID.has(usuarioId) &&
+      !USUARIOS_AUTORIZADOS_REQUEST_ID.has(usuarioUsername)
+    ) {
+      throw new HttpError(403, 'No autorizado para editar el request id')
+    }
+    cambios.requestId = input.requestId.trim() || null
   }
 
   for (const { campo, attr, carpeta } of MAPA_CAMPOS_IMAGEN) {

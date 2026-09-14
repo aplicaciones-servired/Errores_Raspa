@@ -72,6 +72,9 @@ export interface ActualizarRaspaInput {
   empresa?: string
   tipoRaspa?: string
   estado?: RaspaEstado
+  requestId?: string
+  usuarioId?: number | string
+  usuarioUsername?: string
   imagenFrente?: string
   imagenReverso?: string
   imagenError?: string

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ImageUploader from '../ui/ImageUploader'
 import { useToast } from '../ui/ToastContext'
+import { useAuth } from '../../context/AuthContext'
 import { EMPRESAS, TIPO_RASPAS } from '../../utils/const'
 import { actualizarRaspa } from '../../services/raspas.service'
 import type { RaspaData } from '../../types/raspa'
@@ -11,15 +12,27 @@ interface Props {
   onGuardado: () => Promise<void>
 }
 
+const USUARIO_PUEDE_EDITAR_REQUEST_ID = new Set([
+  '1001060235',
+])
+
 export default function EditRaspaModal({ raspa, onClose, onGuardado }: Props) {
   const { showToast } = useToast()
+  const { user } = useAuth()
   const [empresa, setEmpresa] = useState(raspa.empresa)
   const [nombre, setNombre] = useState(raspa.nombre)
   const [tipoRaspa, setTipoRaspa] = useState(raspa.tipoRaspa)
+  const [requestId, setRequestId] = useState(raspa.requestId ?? '')
   const [frente, setFrente] = useState<string | null>(null)
   const [reverso, setReverso] = useState<string | null>(null)
   const [errorImg, setErrorImg] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
+
+  const puedeEditarRequestId = Boolean(
+    user &&
+      (USUARIO_PUEDE_EDITAR_REQUEST_ID.has(String(user.id)) ||
+        USUARIO_PUEDE_EDITAR_REQUEST_ID.has(user.username)),
+  )
 
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,6 +46,9 @@ export default function EditRaspaModal({ raspa, onClose, onGuardado }: Props) {
         empresa,
         nombre: nombre.trim(),
         tipoRaspa,
+        usuarioId: user?.id,
+        usuarioUsername: user?.username,
+        ...(puedeEditarRequestId ? { requestId: requestId.trim() } : {}),
         ...(frente ? { imagenFrente: frente } : {}),
         ...(reverso ? { imagenReverso: reverso } : {}),
         ...(errorImg ? { imagenError: errorImg } : {}),
@@ -110,6 +126,20 @@ export default function EditRaspaModal({ raspa, onClose, onGuardado }: Props) {
               </select>
             </div>
           </div>
+
+          {puedeEditarRequestId && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                Request ID
+              </label>
+              <input
+                type="text"
+                value={requestId}
+                onChange={(e) => setRequestId(e.target.value)}
+                className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
+              />
+            </div>
+          )}
 
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
