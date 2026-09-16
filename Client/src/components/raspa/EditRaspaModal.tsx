@@ -14,6 +14,7 @@ interface Props {
 
 const USUARIO_PUEDE_EDITAR_REQUEST_ID = new Set([
   '1001060235',
+  'CP1001060235',
 ])
 
 export default function EditRaspaModal({ raspa, onClose, onGuardado }: Props) {

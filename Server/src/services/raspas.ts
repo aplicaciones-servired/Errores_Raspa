@@ -272,7 +272,7 @@ export interface ActualizarRaspaInput {
   imagenError?: string
 }
 
-const USUARIOS_AUTORIZADOS_REQUEST_ID = new Set(['1001060235'])
+const USUARIOS_AUTORIZADOS_REQUEST_ID = new Set(['1001060235', 'CP1001060235'])
 
 const MAPA_CAMPOS_IMAGEN: Array<{
   campo: 'imagenFrente' | 'imagenReverso' | 'imagenError'
