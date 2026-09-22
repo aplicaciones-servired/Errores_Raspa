@@ -186,7 +186,6 @@ export default function RaspaListaPage() {
     setProgresoBusqueda('Preparando OCR...')
     try {
       await precalentarOcr()
-      const candidatas: RaspaData[] = []
       let encontrado: RaspaData | null = null
       let pagina = 1
       let procesados = 0
@@ -196,17 +195,10 @@ export default function RaspaListaPage() {
         const r = await listarRaspas({ limite: 100, pagina })
         total = r.total
         procesados += r.datos.length
-        setProgresoBusqueda(`Leyendo frentes... ${procesados}/${total}`)
-        encontrado = await buscarEnLote(r.datos, ['frente'], digitos, candidatas)
+        setProgresoBusqueda(`Leyendo imágenes... ${procesados}/${total}`)
+        encontrado = await buscarEnLote(r.datos, ['frente', 'reverso'], digitos)
         if (r.pagina >= r.totalPaginas) agotado = true
         pagina += 1
-      }
-      if (!encontrado && candidatas.length > 0) {
-        for (const lado of ['reverso'] as const) {
-          setProgresoBusqueda(`Revisando ${lado} de ${candidatas.length} candidatas...`)
-          encontrado = await buscarEnLote(candidatas, [lado], digitos)
-          if (encontrado) break
-        }
       }
       setProgresoBusqueda(null)
       if (encontrado) {
