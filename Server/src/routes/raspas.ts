@@ -5,6 +5,7 @@ import {
   enviarReporteSemanal,
   listarRaspas,
   obtenerEstadisticas,
+  obtenerImagenRaspa,
   registrarRaspa,
   verificarRespuesta,
 } from '../services/raspas'
@@ -92,6 +93,22 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
       return
     }
     console.error('Error al verificar respuesta:', err)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+})
+
+router.get('/raspas/:id/imagen/:lado', async (req: Request, res: Response) => {
+  try {
+    const { buffer, contentType } = await obtenerImagenRaspa(String(req.params.id), String(req.params.lado))
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.send(buffer)
+  } catch (err) {
+    if (err instanceof HttpError) {
+      res.status(err.status).json({ error: err.message })
+      return
+    }
+    console.error('Error al obtener imagen:', err)
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 })

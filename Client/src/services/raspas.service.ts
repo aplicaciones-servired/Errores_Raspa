@@ -66,3 +66,14 @@ export const verificarRespuesta = async (
   )
   return data
 }
+
+export const obtenerImagen = async (
+  id: number,
+  lado: 'frente' | 'reverso' | 'error',
+): Promise<Blob> => {
+  const { data } = await http.get<Blob>(`/raspas/${id}/imagen/${lado}`, {
+    responseType: 'blob',
+    timeout: 30000,
+  })
+  return data
+}

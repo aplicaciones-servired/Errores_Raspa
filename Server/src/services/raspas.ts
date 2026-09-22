@@ -1,7 +1,7 @@
 import { Op } from 'sequelize'
 import sequelize from '../db/connection'
 import Raspa, { type RaspaAttributes } from '../models/Raspa'
-import { uploadImage } from './minioClient'
+import { uploadImage, descargarImagen } from './minioClient'
 import { enviarCorreoReporteSemanal, enviarCorreoValidacion } from './email'
 import { capturarRequestId, type CapturaResult } from './ticketReader'
 import { ESTADOS, type RaspaEstado } from '../constants/estados'
@@ -218,7 +218,14 @@ export const listarRaspas = async (filtros: FiltrosListaRaspa = {}): Promise<Lis
   if (filtros.estado) where.estado = filtros.estado
   if (filtros.nombre) where.nombre = { [Op.like]: `%${filtros.nombre}%` }
   if (filtros.empresa) where.empresa = filtros.empresa
-  if (filtros.requestId) where.requestId = { [Op.like]: `%${filtros.requestId}%` }
+  if (filtros.requestId) {
+    const valor = filtros.requestId.trim()
+    if (/^\d{6,}$/.test(valor)) {
+      where.requestId = valor
+    } else {
+      where.requestId = { [Op.like]: `%${valor}%` }
+    }
+  }
   if (filtros.desde || filtros.hasta) {
     const rango: Record<string, Date> = {}
     if (filtros.desde) rango[Op.gte as unknown as string] = new Date(`${filtros.desde}T00:00:00`)
@@ -257,6 +264,25 @@ export interface ListaRaspasResultado {
   total: number
   pagina: number
   totalPaginas: number
+}
+
+const MAPA_LADO_ATTR: Record<string, 'imagenFrenteUrl' | 'imagenReversoUrl' | 'imagenErrorUrl'> = {
+  frente: 'imagenFrenteUrl',
+  reverso: 'imagenReversoUrl',
+  error: 'imagenErrorUrl',
+}
+
+export const obtenerImagenRaspa = async (
+  id: string,
+  lado: string,
+): Promise<{ buffer: Buffer; contentType: string }> => {
+  const raspa = await Raspa.findByPk(id)
+  if (!raspa) throw new HttpError(404, 'Raspa no encontrada')
+  const attr = MAPA_LADO_ATTR[lado]
+  if (!attr) throw new HttpError(400, 'Lado invalido')
+  const url = raspa.getDataValue(attr)
+  if (!url) throw new HttpError(404, 'Imagen no disponible')
+  return descargarImagen(url)
 }
 
 export interface ActualizarRaspaInput {

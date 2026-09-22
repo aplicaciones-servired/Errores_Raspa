@@ -64,4 +64,30 @@ export const uploadImage = async (
 
 export const getBucket = (): string => bucket
 
+export interface ImagenDescargada {
+  buffer: Buffer
+  contentType: string
+}
+
+export const descargarImagen = async (url: string): Promise<ImagenDescargada> => {
+  const pathname = new URL(url).pathname
+  const objectName = pathname.replace(/^\/[^/]+\//, '')
+  const stream = await minioClient.getObject(bucket, objectName)
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  const buffer = Buffer.concat(chunks)
+  let contentType = 'image/jpeg'
+  try {
+    const stat = await minioClient.statObject(bucket, objectName)
+    const meta = (stat as { metaData?: Record<string, string> }).metaData
+    const ct = meta?.['content-type'] ?? (stat as { contentType?: string }).contentType
+    if (ct) contentType = ct
+  } catch {
+    /* conservar el valor por defecto */
+  }
+  return { buffer, contentType }
+}
+
 export default minioClient

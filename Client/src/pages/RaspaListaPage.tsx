@@ -3,7 +3,8 @@ import RaspaList from '../components/raspa/RaspaList'
 import { useToast } from '../components/ui/ToastContext'
 import { EMPRESAS } from '../utils/const'
 import { enviarReporteSemanal, listarRaspas } from '../services/raspas.service'
-import type { FiltrosRaspa, RespuestaPaginada } from '../types/raspa'
+import { cargarLibreriaOcr, leerDigitosDeImagen, soloDigitos } from '../utils/ocr'
+import type { FiltrosRaspa, RaspaData, RespuestaPaginada } from '../types/raspa'
 
 interface FiltrosUI {
   estado: string
@@ -26,6 +27,8 @@ const FILTROS_INICIAL: FiltrosUI = {
 const ESTADOS_OPCIONES = ['PENDIENTE', 'RESUELTO', 'RECHAZADO'] as const
 const LIMITE = 6
 const INTERVALO_REFRESH_MS = 30000
+const CONCURRENCIA_OCR = 3
+const LADOS_OCR = ['frente', 'reverso', 'error'] as const
 
 const aFiltrosApi = (f: FiltrosUI): FiltrosRaspa => {
   const api: FiltrosRaspa = { limite: LIMITE }
@@ -46,6 +49,11 @@ export default function RaspaListaPage() {
   const [cargando, setCargando] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
+  const [busquedaNumero, setBusquedaNumero] = useState('')
+  const [buscandoNumero, setBuscandoNumero] = useState(false)
+  const [progresoBusqueda, setProgresoBusqueda] = useState<string | null>(null)
+  const [resultadoOcr, setResultadoOcr] = useState<RaspaData | null>(null)
+
   const consultar = useCallback(async (filtrosLocales: FiltrosUI, paginaLocal: number) => {
     setCargando(true)
     try {
@@ -64,12 +72,12 @@ export default function RaspaListaPage() {
   }, [filtros, pagina, consultar])
 
   useEffect(() => {
-    if (!autoRefresh) return
+    if (!autoRefresh || buscandoNumero) return
     const id = setInterval(() => {
       void consultar(filtros, pagina)
     }, INTERVALO_REFRESH_MS)
     return () => clearInterval(id)
-  }, [autoRefresh, filtros, pagina, consultar])
+  }, [autoRefresh, buscandoNumero, filtros, pagina, consultar])
 
   const cambia = (campo: keyof FiltrosUI) =>
     (valor: string) => {
@@ -131,12 +139,152 @@ export default function RaspaListaPage() {
     }
   }
 
+  const buscarPorNumero = async () => {
+    const digitos = soloDigitos(busquedaNumero)
+    if (!digitos || digitos.length < 6) {
+      showToast('Escribe el número impreso en la tarjeta (mínimo 6 dígitos)', 'error')
+      return
+    }
+    setBuscandoNumero(true)
+    setResultadoOcr(null)
+    setProgresoBusqueda('Cargando motor OCR...')
+    try {
+      await cargarLibreriaOcr()
+      let pagina = 1
+      let procesados = 0
+      let total = 0
+      let encontrado: RaspaData | null = null
+      let agotado = false
+      while (!encontrado && !agotado) {
+        const r = await listarRaspas({ limite: 100, pagina })
+        total = r.total
+        procesados += r.datos.length
+        setProgresoBusqueda(`Buscando... revisados ${procesados} de ${total}`)
+        for (let i = 0; i < r.datos.length && !encontrado; i += CONCURRENCIA_OCR) {
+          const lote = r.datos.slice(i, i + CONCURRENCIA_OCR)
+          const resultados = await Promise.all(
+            lote.map(async (raspa) => ({
+              raspa,
+              match: await escanearPorNumero(raspa, digitos),
+            })),
+          )
+          const match = resultados.find((res) => res.match)
+          if (match) encontrado = match.raspa
+        }
+        if (r.pagina >= r.totalPaginas) agotado = true
+        pagina += 1
+      }
+      setProgresoBusqueda(null)
+      if (encontrado) {
+        setResp({ datos: [encontrado], total: 1, pagina: 1, totalPaginas: 1 })
+        setResultadoOcr(encontrado)
+        setAutoRefresh(false)
+        showToast('Raspa encontrada por número', 'success')
+      } else {
+        showToast('No se encontró ninguna raspa con ese número', 'info')
+      }
+    } catch (err) {
+      console.error('Error en búsqueda por número:', err)
+      setProgresoBusqueda(null)
+      showToast('No se pudo completar la búsqueda (revisa la conexión a internet para el OCR)', 'error')
+    } finally {
+      setBuscandoNumero(false)
+    }
+  }
+
+  const escanearPorNumero = async (raspa: RaspaData, digitosBuscados: string): Promise<boolean> => {
+    for (const lado of LADOS_OCR) {
+      const digitos = await leerDigitosDeImagen(raspa.id, lado)
+      if (digitos.length > 0 && digitos.includes(digitosBuscados)) return true
+    }
+    return false
+  }
+
+  const limpiarBusquedaNumero = () => {
+    setBusquedaNumero('')
+    setResultadoOcr(null)
+    setAutoRefresh(true)
+    void consultar(filtros, 1)
+  }
+
   const filtrado = Boolean(
   filtros.estado || filtros.nombre || filtros.empresa || filtros.requestId || filtros.desde || filtros.hasta,
 )
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
+      <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
+            <span className="text-white text-lg">&#128269;</span>
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Buscar por número impreso en la tarjeta</h2>
+            <p className="text-sm text-slate-400 font-medium">
+              Lee las imágenes y encuentra la raspa cuyo número coincida, sin esperar el correo
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[260px]">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Número de la raspa
+            </label>
+            <input
+              type="text"
+              value={busquedaNumero}
+              onChange={(e) => setBusquedaNumero(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void buscarPorNumero()
+              }}
+              placeholder="Número impreso en la tarjeta, ej. 19102340075004607060"
+              className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all duration-200 placeholder:text-slate-400"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => void buscarPorNumero()}
+            disabled={buscandoNumero}
+            className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold px-5 py-2.5 rounded-xl hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md shadow-orange-500/20 flex items-center gap-2 flex-shrink-0"
+          >
+            {buscandoNumero ? (
+              <>
+                <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Buscando...
+              </>
+            ) : (
+              <>
+                <span>&#128270;</span>
+                Buscar por número
+              </>
+            )}
+          </button>
+        </div>
+
+        {progresoBusqueda && (
+          <p className="text-sm text-amber-600 font-medium">{progresoBusqueda}</p>
+        )}
+
+        {resultadoOcr && (
+          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+            <span className="text-sm text-emerald-700 font-semibold">
+              Mostrando la raspa encontrada por número impreso
+            </span>
+            <button
+              type="button"
+              onClick={limpiarBusquedaNumero}
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 px-3 py-1.5 rounded-lg bg-white border border-emerald-200 hover:bg-emerald-100 transition-all duration-200"
+            >
+              Volver a la lista
+            </button>
+          </div>
+        )}
+      </div>
+
       <FiltersBar
         filtros={filtros}
         onChange={cambia}
@@ -287,12 +435,13 @@ function FiltersBar({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">ID RASPA Y LISTO</label>
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">No. raspa / ID</label>
           <input
             type="text"
             value={filtros.requestId}
             onChange={(e) => onChange('requestId')(e.target.value)}
-            placeholder="Buscar por ID..."
+            title="Pega el número completo (ej. 19102340075004607060) para búsqueda exacta rápida"
+            placeholder="Número completo, ej. 19102340075004607060"
             className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 placeholder:text-slate-400"
           />
         </div>
