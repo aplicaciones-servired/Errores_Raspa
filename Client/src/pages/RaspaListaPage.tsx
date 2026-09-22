@@ -3,7 +3,7 @@ import RaspaList from '../components/raspa/RaspaList'
 import { useToast } from '../components/ui/ToastContext'
 import { EMPRESAS } from '../utils/const'
 import { enviarReporteSemanal, listarRaspas } from '../services/raspas.service'
-import { cargarLibreriaOcr, leerDigitosDeImagen, soloDigitos } from '../utils/ocr'
+import { leerDigitosDeImagen, precalentarOcr, soloDigitos, type LadoImagen } from '../utils/ocr'
 import type { FiltrosRaspa, RaspaData, RespuestaPaginada } from '../types/raspa'
 
 interface FiltrosUI {
@@ -28,7 +28,6 @@ const ESTADOS_OPCIONES = ['PENDIENTE', 'RESUELTO', 'RECHAZADO'] as const
 const LIMITE = 6
 const INTERVALO_REFRESH_MS = 30000
 const CONCURRENCIA_OCR = 3
-const LADOS_OCR = ['frente', 'reverso', 'error'] as const
 
 const aFiltrosApi = (f: FiltrosUI): FiltrosRaspa => {
   const api: FiltrosRaspa = { limite: LIMITE }
@@ -53,6 +52,13 @@ export default function RaspaListaPage() {
   const [buscandoNumero, setBuscandoNumero] = useState(false)
   const [progresoBusqueda, setProgresoBusqueda] = useState<string | null>(null)
   const [resultadoOcr, setResultadoOcr] = useState<RaspaData | null>(null)
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void precalentarOcr().catch(() => undefined)
+    }, 2500)
+    return () => clearTimeout(id)
+  }, [])
 
   const consultar = useCallback(async (filtrosLocales: FiltrosUI, paginaLocal: number) => {
     setCargando(true)
@@ -139,6 +145,36 @@ export default function RaspaListaPage() {
     }
   }
 
+  const buscarEnLote = async (
+    raspas: RaspaData[],
+    lados: LadoImagen[],
+    digitos: string,
+    candidatas: RaspaData[] | null = null,
+  ): Promise<RaspaData | null> => {
+    for (let i = 0; i < raspas.length; i += CONCURRENCIA_OCR) {
+      const lote = raspas.slice(i, i + CONCURRENCIA_OCR)
+      const resultados = await Promise.all(
+        lote.map(async (raspa) => {
+          for (const lado of lados) {
+            const digitosOcr = await leerDigitosDeImagen(raspa.id, lado)
+            if (digitosOcr.length > 0 && digitosOcr.includes(digitos)) {
+              return { raspa, match: true }
+            }
+          }
+          return { raspa, match: false }
+        }),
+      )
+      const match = resultados.find((res) => res.match)
+      if (match) return match.raspa
+      if (candidatas) {
+        for (const res of resultados) {
+          if (!res.match) candidatas.push(res.raspa)
+        }
+      }
+    }
+    return null
+  }
+
   const buscarPorNumero = async () => {
     const digitos = soloDigitos(busquedaNumero)
     if (!digitos || digitos.length < 6) {
@@ -147,32 +183,30 @@ export default function RaspaListaPage() {
     }
     setBuscandoNumero(true)
     setResultadoOcr(null)
-    setProgresoBusqueda('Cargando motor OCR...')
+    setProgresoBusqueda('Preparando OCR...')
     try {
-      await cargarLibreriaOcr()
+      await precalentarOcr()
+      const candidatas: RaspaData[] = []
+      let encontrado: RaspaData | null = null
       let pagina = 1
       let procesados = 0
       let total = 0
-      let encontrado: RaspaData | null = null
       let agotado = false
       while (!encontrado && !agotado) {
         const r = await listarRaspas({ limite: 100, pagina })
         total = r.total
         procesados += r.datos.length
-        setProgresoBusqueda(`Buscando... revisados ${procesados} de ${total}`)
-        for (let i = 0; i < r.datos.length && !encontrado; i += CONCURRENCIA_OCR) {
-          const lote = r.datos.slice(i, i + CONCURRENCIA_OCR)
-          const resultados = await Promise.all(
-            lote.map(async (raspa) => ({
-              raspa,
-              match: await escanearPorNumero(raspa, digitos),
-            })),
-          )
-          const match = resultados.find((res) => res.match)
-          if (match) encontrado = match.raspa
-        }
+        setProgresoBusqueda(`Leyendo frentes... ${procesados}/${total}`)
+        encontrado = await buscarEnLote(r.datos, ['frente'], digitos, candidatas)
         if (r.pagina >= r.totalPaginas) agotado = true
         pagina += 1
+      }
+      if (!encontrado && candidatas.length > 0) {
+        for (const lado of ['reverso'] as const) {
+          setProgresoBusqueda(`Revisando ${lado} de ${candidatas.length} candidatas...`)
+          encontrado = await buscarEnLote(candidatas, [lado], digitos)
+          if (encontrado) break
+        }
       }
       setProgresoBusqueda(null)
       if (encontrado) {
@@ -190,14 +224,6 @@ export default function RaspaListaPage() {
     } finally {
       setBuscandoNumero(false)
     }
-  }
-
-  const escanearPorNumero = async (raspa: RaspaData, digitosBuscados: string): Promise<boolean> => {
-    for (const lado of LADOS_OCR) {
-      const digitos = await leerDigitosDeImagen(raspa.id, lado)
-      if (digitos.length > 0 && digitos.includes(digitosBuscados)) return true
-    }
-    return false
   }
 
   const limpiarBusquedaNumero = () => {
