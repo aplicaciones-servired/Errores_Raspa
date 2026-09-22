@@ -62,6 +62,7 @@ export const verificarRespuesta = async (
 ): Promise<VerificarRespuestaResponse> => {
   const { data } = await http.get<VerificarRespuestaResponse>(
     `/raspas/${id}/verificar-respuesta`,
+    { timeout: 60000 },
   )
   return data
 }

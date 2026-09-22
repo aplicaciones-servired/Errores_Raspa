@@ -54,7 +54,11 @@ export default function RaspaList({
       }
     } catch (err) {
       console.error('Error al verificar respuesta:', err)
-      showToast('Error al verificar la respuesta', 'error')
+      if ((err as { code?: string })?.code === 'ECONNABORTED') {
+        showToast('La verificación tardó demasiado. Inténtalo de nuevo.', 'error')
+      } else {
+        showToast('Error al verificar la respuesta', 'error')
+      }
     } finally {
       setVerificandoId(null)
     }
@@ -228,7 +232,7 @@ export default function RaspaList({
                     </div>
                     <button
                       onClick={() => handleVerificar(r.id)}
-                      disabled={verificandoId === r.id}
+                      disabled={verificandoId !== null}
                       className="text-xs bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-semibold px-4 py-2.5 rounded-xl hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 flex items-center gap-2 flex-shrink-0"
                     >
                       {verificandoId === r.id ? (

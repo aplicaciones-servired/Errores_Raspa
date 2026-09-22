@@ -74,21 +74,6 @@ const limpiarRespuesta = (cuerpo: string): string => {
   return texto
 }
 
-const leerCuerpo = async (
-  client: ImapFlow,
-  uid: number,
-): Promise<{ cuerpo: string; asunto: string; inReplyTo: string | null }> => {
-  const mensaje = await client.fetchOne(uid, { source: true, envelope: true, uid: true })
-  if (!mensaje || !mensaje.source) return { cuerpo: '', asunto: '', inReplyTo: null }
-  const asunto = mensaje.envelope?.subject ?? ''
-  const parsed = await simpleParser(Buffer.isBuffer(mensaje.source) ? mensaje.source : Buffer.from(mensaje.source))
-  return {
-    cuerpo: parsed.text || parsed.html || '',
-    asunto,
-    inReplyTo: parsed.inReplyTo ?? null,
-  }
-}
-
 export interface CapturaResult {
   requestId: string
   respuesta: string
@@ -112,6 +97,9 @@ export const capturarRequestId = async (
     secure,
     auth: { user, pass },
     logger: false,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
   })
 
   LOG('configuracion IMAP', {
@@ -140,7 +128,7 @@ export const capturarRequestId = async (
     const desde = new Date(Date.now() - BUSCAR_ATRAS_HORAS * 60 * 60 * 1000)
     LOG('buscando correos', { remitente: REMITENTE, desde: desde.toISOString() })
 
-    const uids = await client.search({ from: REMITENTE, since: desde })
+    const uids = await client.search({ from: REMITENTE, since: desde }, { uid: true })
     LOG('resultado de busqueda', { 
       cantidad: uids ? uids.length : 0,
       uids: uids ?? [],
@@ -153,35 +141,48 @@ export const capturarRequestId = async (
     try {
       const orden = [...uids].sort((a, b) => b - a)
       const ocupados = contexto?.requestIdsOcupados
-      let matchBuscado: CapturaResult | null = null
-      for (const uid of orden) {
-        const { cuerpo, asunto, inReplyTo } = await leerCuerpo(client, uid)
+      const msgIdBuscado = contexto?.correoMessageId?.trim().toLowerCase()
+      let procesados = 0
+      for await (const mensaje of client.fetch(orden, { source: true, envelope: true, uid: true }, { uid: true })) {
+        if (!mensaje?.source) continue
+        const asunto = mensaje.envelope?.subject ?? ''
+        const parsed = await simpleParser(
+          Buffer.isBuffer(mensaje.source) ? mensaje.source : Buffer.from(mensaje.source),
+        )
+        const cuerpo = parsed.text || parsed.html || ''
+        const inReplyTo = parsed.inReplyTo ?? null
         const id = extraerRequestId(`${asunto}\n${cuerpo}`)
+        const respuestaLimpia = limpiarRespuesta(cuerpo)
+        procesados++
 
         if (contexto?.requestIdBuscado) {
           const coincide = id !== null && id === contexto.requestIdBuscado
-          const respuestaLimpia = limpiarRespuesta(cuerpo)
+          const esHilo =
+            msgIdBuscado !== undefined && inReplyTo !== null && inReplyTo.trim().toLowerCase() === msgIdBuscado
           LOG('evaluando correo por requestIdBuscado', {
-            uid,
+            uid: mensaje.uid,
             asunto,
             idEncontrado: id,
             requestIdBuscado: contexto.requestIdBuscado,
             coincide,
-            largoRespuestaLimpia: respuestaLimpia.length,
+            esHilo,
+            largoRespuesta: respuestaLimpia.length,
           })
-          if (coincide && id) {
-            if (!matchBuscado || respuestaLimpia.length > matchBuscado.respuesta.length) {
-              matchBuscado = { requestId: id, respuesta: respuestaLimpia }
-            }
+          if (esHilo && respuestaLimpia.length > 0) {
+            LOG('match por hilo con requestIdBuscado', { uid: mensaje.uid })
+            return { requestId: contexto.requestIdBuscado, respuesta: respuestaLimpia }
+          }
+          if (coincide && respuestaLimpia.length > 0) {
+            LOG('match por requestIdBuscado', { uid: mensaje.uid })
+            return { requestId: contexto.requestIdBuscado, respuesta: respuestaLimpia }
           }
           continue
         }
 
-        if (contexto?.correoMessageId && inReplyTo) {
-          const msgIdLimpio = contexto.correoMessageId.trim().toLowerCase()
-          if (inReplyTo.toLowerCase() === msgIdLimpio) {
+        if (msgIdBuscado && inReplyTo) {
+          if (inReplyTo.trim().toLowerCase() === msgIdBuscado) {
             const idInReply = extraerRequestId(`${asunto}\n${cuerpo}`)
-            LOG('match por In-Reply-To', { uid, inReplyTo, id: idInReply })
+            LOG('match por In-Reply-To', { uid: mensaje.uid, inReplyTo, id: idInReply })
             if (idInReply) {
               if (ocupados?.has(idInReply)) {
                 LOG('request_id ya ocupado, ignorando', { id: idInReply })
@@ -211,20 +212,6 @@ export const capturarRequestId = async (
             (matchEmpresaEnAsunto || matchEmpresaEnCuerpo)
         }
 
-        LOG('evaluando correo', {
-          uid,
-          asunto,
-          largoCuerpo: cuerpo.length,
-          idEncontrado: id,
-          coincideContexto: coincide,
-          contextoTipoRaspa: contexto?.tipoRaspa,
-          contextoEmpresa: contexto?.empresa,
-          matchTipoEnAsunto,
-          matchTipoEnCuerpo,
-          matchEmpresaEnAsunto,
-          matchEmpresaEnCuerpo,
-        })
-
         if (id && coincide && !contexto?.modoHilo) {
           if (ocupados?.has(id)) {
             LOG('request_id ya ocupado en fallback, ignorando', { id })
@@ -234,19 +221,11 @@ export const capturarRequestId = async (
         }
       }
 
-      if (matchBuscado) {
-        LOG('mejor coincidencia por requestIdBuscado', {
-          requestId: matchBuscado.requestId,
-          largoRespuesta: matchBuscado.respuesta.length,
-        })
-        return matchBuscado
-      }
+      LOG('no se encontro request id', { correosEvaluados: procesados })
+      return null
     } finally {
       lock.release()
     }
-
-    LOG('no se encontro request id en ningun correo')
-    return null
   } catch (err) {
     console.error('[ticketReader] Error:', err)
     return null
