@@ -7,6 +7,7 @@ import {
   obtenerEstadisticas,
   obtenerImagenRaspa,
   registrarRaspa,
+  reenviarCorreoRaspa,
   verificarRespuesta,
 } from '../services/raspas'
 
@@ -34,6 +35,7 @@ router.get('/raspas', async (req: Request, res: Response) => {
       estado: typeof req.query.estado === 'string' ? req.query.estado : undefined,
       nombre: typeof req.query.nombre === 'string' ? req.query.nombre : undefined,
       empresa: typeof req.query.empresa === 'string' ? req.query.empresa : undefined,
+      tipoRaspa: typeof req.query.tipoRaspa === 'string' ? req.query.tipoRaspa : undefined,
       requestId: typeof req.query.requestId === 'string' ? req.query.requestId : undefined,
       desde: typeof req.query.desde === 'string' ? req.query.desde : undefined,
       hasta: typeof req.query.hasta === 'string' ? req.query.hasta : undefined,
@@ -93,6 +95,20 @@ router.get('/raspas/:id/verificar-respuesta', async (req: Request, res: Response
       return
     }
     console.error('Error al verificar respuesta:', err)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+})
+
+router.post('/raspas/:id/reenviar-correo', async (req: Request, res: Response) => {
+  try {
+    const resultado = await reenviarCorreoRaspa(String(req.params.id))
+    res.json(resultado)
+  } catch (err) {
+    if (err instanceof HttpError) {
+      res.status(err.status).json({ error: err.message })
+      return
+    }
+    console.error('Error al reenviar correo de raspa:', err)
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 })

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import EditRaspaModal from './EditRaspaModal'
 import ImageModal from '../ui/ImageModal'
 import { useToast } from '../ui/ToastContext'
-import { verificarRespuesta } from '../../services/raspas.service'
+import { reenviarCorreo, verificarRespuesta } from '../../services/raspas.service'
 import type { RaspaData } from '../../types/raspa'
 
 interface Props {
@@ -39,7 +39,26 @@ export default function RaspaList({
   const { showToast } = useToast()
   const [preview, setPreview] = useState<Preview | null>(null)
   const [verificandoId, setVerificandoId] = useState<number | null>(null)
+  const [reenviandoId, setReenviandoId] = useState<number | null>(null)
   const [editando, setEditando] = useState<RaspaData | null>(null)
+
+  const handleReenviar = async (id: number) => {
+    setReenviandoId(id)
+    showToast('Reenviando correo de validacion...', 'info')
+    try {
+      await reenviarCorreo(id)
+      showToast('✔ Correo reenviado. Buscando el request id...', 'success')
+      await onRefresh()
+    } catch (err) {
+      console.error('Error al reenviar correo:', err)
+      const mensaje =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Error al reenviar el correo'
+      showToast(mensaje, 'error')
+    } finally {
+      setReenviandoId(null)
+    }
+  }
 
   const handleVerificar = async (id: number) => {
     setVerificandoId(id)
@@ -253,8 +272,33 @@ export default function RaspaList({
                   </div>
                 </div>
               ) : (
-                <div className="bg-slate-100/50 rounded-xl p-4 border border-dashed border-slate-200 text-center">
-                  <span className="text-slate-400 text-sm">Sin respuesta de soporte</span>
+                <div className="bg-amber-50/60 rounded-2xl p-4 border border-dashed border-amber-200">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-amber-700 text-sm font-semibold">
+                      Sin respuesta de soporte
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleReenviar(r.id)}
+                      disabled={reenviandoId !== null}
+                      className="text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold px-4 py-2.5 rounded-xl hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md shadow-amber-500/20 flex items-center gap-2"
+                    >
+                      {reenviandoId === r.id ? (
+                        <>
+                          <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Reenviando...
+                        </>
+                      ) : (
+                        <>
+                          <span>&#128231;</span>
+                          Reenviar correo
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import RaspaList from '../components/raspa/RaspaList'
 import { useToast } from '../components/ui/ToastContext'
-import { EMPRESAS } from '../utils/const'
+import { EMPRESAS, TIPO_RASPAS } from '../utils/const'
 import { enviarReporteSemanal, listarRaspas } from '../services/raspas.service'
 import { leerDigitosDeImagen, precalentarOcr, soloDigitos, type LadoImagen } from '../utils/ocr'
 import type { FiltrosRaspa, RaspaData, RespuestaPaginada } from '../types/raspa'
@@ -10,6 +10,7 @@ interface FiltrosUI {
   estado: string
   nombre: string
   empresa: string
+  tipoRaspa: string
   requestId: string
   desde: string
   hasta: string
@@ -19,6 +20,7 @@ const FILTROS_INICIAL: FiltrosUI = {
   estado: '',
   nombre: '',
   empresa: '',
+  tipoRaspa: '',
   requestId: '',
   desde: '',
   hasta: '',
@@ -34,6 +36,7 @@ const aFiltrosApi = (f: FiltrosUI): FiltrosRaspa => {
   if (f.estado) api.estado = f.estado
   if (f.nombre) api.nombre = f.nombre
   if (f.empresa) api.empresa = f.empresa
+  if (f.tipoRaspa) api.tipoRaspa = f.tipoRaspa
   if (f.requestId) api.requestId = f.requestId
   if (f.desde) api.desde = f.desde
   if (f.hasta) api.hasta = f.hasta
@@ -226,8 +229,14 @@ export default function RaspaListaPage() {
   }
 
   const filtrado = Boolean(
-  filtros.estado || filtros.nombre || filtros.empresa || filtros.requestId || filtros.desde || filtros.hasta,
-)
+    filtros.estado ||
+      filtros.nombre ||
+      filtros.empresa ||
+      filtros.tipoRaspa ||
+      filtros.requestId ||
+      filtros.desde ||
+      filtros.hasta,
+  )
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -428,6 +437,20 @@ function FiltersBar({
             <option value="">Todas</option>
             {EMPRESAS.map((emp) => (
               <option key={emp} value={emp}>{emp}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Tipo de raspa</label>
+          <select
+            value={filtros.tipoRaspa}
+            onChange={(e) => onChange('tipoRaspa')(e.target.value)}
+            className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
+          >
+            <option value="">Todos</option>
+            {TIPO_RASPAS.map((tipo) => (
+              <option key={tipo} value={tipo}>{tipo}</option>
             ))}
           </select>
         </div>

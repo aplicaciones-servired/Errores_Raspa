@@ -218,6 +218,7 @@ export const listarRaspas = async (filtros: FiltrosListaRaspa = {}): Promise<Lis
   if (filtros.estado) where.estado = filtros.estado
   if (filtros.nombre) where.nombre = { [Op.like]: `%${filtros.nombre}%` }
   if (filtros.empresa) where.empresa = filtros.empresa
+  if (filtros.tipoRaspa) where.tipoRaspa = filtros.tipoRaspa
   if (filtros.requestId) {
     const valor = filtros.requestId.trim()
     if (/^\d{6,}$/.test(valor)) {
@@ -254,6 +255,7 @@ export interface FiltrosListaRaspa {
   estado?: string
   nombre?: string
   empresa?: string
+  tipoRaspa?: string
   requestId?: string
   desde?: string
   hasta?: string
@@ -283,6 +285,52 @@ export const obtenerImagenRaspa = async (
   const url = raspa.getDataValue(attr)
   if (!url) throw new HttpError(404, 'Imagen no disponible')
   return descargarImagen(url)
+}
+
+export interface ReenviarCorreoResultado {
+  reenviado: true
+  correoMessageId: string
+  requestIdEnProceso: true
+}
+
+export const reenviarCorreoRaspa = async (id: string): Promise<ReenviarCorreoResultado> => {
+  const raspa = await Raspa.findByPk(id)
+  if (!raspa) throw new HttpError(404, 'Raspa no encontrada')
+
+  const requestId = raspa.getDataValue('requestId')
+  if (requestId) throw new HttpError(400, 'Esta raspa ya tiene requestId asignado')
+
+  const tipoRaspa = raspa.getDataValue('tipoRaspa')
+  const empresa = raspa.getDataValue('empresa')
+
+  const descargarLado = async (lado: keyof typeof MAPA_LADO_ATTR) => {
+    const attr = MAPA_LADO_ATTR[lado]
+    const url = raspa.getDataValue(attr)
+    if (!url) throw new HttpError(404, `Imagen ${lado} no disponible`)
+    const { buffer, contentType } = await descargarImagen(url)
+    return { filename: `${lado}${toExtension(contentType)}`, buffer, contentType }
+  }
+
+  const [frente, reverso, error] = await Promise.all([
+    descargarLado('frente'),
+    descargarLado('reverso'),
+    descargarLado('error'),
+  ])
+
+  console.log(`[raspas] Reenviando correo de validacion para raspa ${id} (${tipoRaspa} / ${empresa})`)
+  const correoMessageId = await enviarCorreoValidacion({
+    tipoRaspa,
+    empresa,
+    imagenes: { frente, reverso, error },
+  })
+  await raspa.update({ correoMessageId })
+
+  const raspaId = raspa.getDataValue('id')
+  if (typeof raspaId === 'number') {
+    void capturarRequestIdEnSegundoPlano({ raspaId, tipoRaspa, empresa, correoMessageId })
+  }
+
+  return { reenviado: true, correoMessageId, requestIdEnProceso: true }
 }
 
 export interface ActualizarRaspaInput {

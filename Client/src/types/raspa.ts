@@ -55,6 +55,7 @@ export interface FiltrosRaspa {
   estado?: string
   nombre?: string
   empresa?: string
+  tipoRaspa?: string
   requestId?: string
   desde?: string
   hasta?: string

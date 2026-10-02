@@ -77,3 +77,18 @@ export const obtenerImagen = async (
   })
   return data
 }
+
+export interface ReenviarCorreoResponse {
+  reenviado: true
+  correoMessageId: string
+  requestIdEnProceso: true
+}
+
+export const reenviarCorreo = async (id: number): Promise<ReenviarCorreoResponse> => {
+  const { data } = await http.post<ReenviarCorreoResponse>(
+    `/raspas/${id}/reenviar-correo`,
+    {},
+    { timeout: 60000 },
+  )
+  return data
+}
