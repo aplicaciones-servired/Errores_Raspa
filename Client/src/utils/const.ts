@@ -23,6 +23,10 @@ export const TIPO_RASPAS = [
   'BILLULLO',
   'ESMERALDAS',
   'COOL 7S',
+  'EL JUEGO DEL SAPO',
+  '8S LOCOS',
+  'CARNAVVALES DE COLOMBIA',S
+  'NAVIDAD DORADA',
 ] as const
 
 export type TipoRaspa = (typeof TIPO_RASPAS)[number]
